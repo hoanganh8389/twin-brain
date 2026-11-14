@@ -34,6 +34,9 @@ final class BizCity_Journal_Doc_Index_Pack_Exporter {
 	// one pack PER PRINCIPAL (owner · staff · customer) built through brain-access@1 — the site filters before packing, the cell never filters.
 	const CONTRACT     = 'doc-index@3';
 	const MAX_JOBS     = 10;
+	// [2026-11-14 10:45 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-B8 — the person's "ghi nhớ" notes ride on their own shelf (row note), outside the 120-row doc budget
+	const MAX_NOTES    = 20;
+	const NOTE_TEXT_MAX = 240;
 	// [2026-10-22 01:07 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.126 S126-M2 (doc 20 §3) — label-only shelves beside the doc rows: notebooks[] (NB-), sheets[] (registry: built-in + own), skills[] (KN-, name + current version, never the body)
 	const MAX_NOTEBOOKS = 30;
 	const MAX_SHEETS    = 40;
@@ -163,6 +166,10 @@ final class BizCity_Journal_Doc_Index_Pack_Exporter {
 				if ( in_array( $kind, array( 'sheet.define', 'skill.revision', 'skill.state' ), true ) ) {
 					continue;
 				}
+				// [2026-11-14 10:45 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-B8 — notes go to the note shelf below (own query), never twice as doc rows
+				if ( 'common.note' === $kind ) {
+					continue;
+				}
 				// [2026-10-20 10:53 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.126 S126-J5 — the latest JB- headers go to their own shelf (jobs[]), never to the doc rows
 				if ( 'job' === (string) ( $entry['layer'] ?? '' ) ) {
 					if ( count( $jobs ) < self::MAX_JOBS && 'owner' === $principal ) {
@@ -185,6 +192,15 @@ final class BizCity_Journal_Doc_Index_Pack_Exporter {
 			foreach ( $shelves as $item ) {
 				if ( ! self::push( $items, $bytes, $item, $truncated ) ) {
 					break;
+				}
+			}
+			// [2026-11-14 10:45 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-B8 — "ghi nhớ" notes of the person (owner / staff packs only; a customer never reads the owner's notes), newest first, before the doc rows
+			if ( 'customer' !== $principal ) {
+				foreach ( $db->note_rows( $owner_user_id, self::MAX_NOTES ) as $r ) {
+					$entry = BizCity_Journal_Index::to_journal_entry( $r );
+					if ( ! $may( $entry ) || ! self::push( $items, $bytes, self::note_item( $entry ), $truncated ) ) {
+						continue;
+					}
 				}
 			}
 			foreach ( self::order_docs( $docs, gmdate( 'Y-m-d' ) ) as $item ) {
@@ -299,6 +315,19 @@ final class BizCity_Journal_Doc_Index_Pack_Exporter {
 	 * [2026-10-17 08:40 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.121 B1-2 (S121-A2, I-1) — one `doc` row (I-1) from a journal-entry@1.1.0. Sensitive kinds (finance · health · child ·
 	 * personal) carry only code, kind, title, date, state — never a summary or card values (R-JN-11). Never a URL / hash. Pure.
 	 */
+	public static function note_item( array $e ): array {
+		// [2026-11-14 10:45 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-B8 — one note row: code, title, the first words of the note (journal summary = the note body), the day it was saved. No URL, no hash. Pure.
+		$at = (string) ( $e['created_at'] ?? $e['updated_at'] ?? '' );
+		return array(
+			'row'      => 'note',
+			'code'     => 'JE-' . (int) ( $e['entry_id'] ?? 0 ),
+			'entry_id' => (int) ( $e['entry_id'] ?? 0 ),
+			'title'    => mb_substr( (string) ( $e['title'] ?? '' ), 0, 120 ),
+			'text'     => mb_substr( trim( (string) preg_replace( '/\s+/u', ' ', (string) ( $e['summary'] ?? '' ) ) ), 0, self::NOTE_TEXT_MAX ),
+			'saved_at' => $at,
+		);
+	}
+
 	public static function doc_item( array $e ): array {
 		$orig      = is_array( $e['original'] ?? null ) ? $e['original'] : array();
 		$code      = '' !== (string) ( $orig['doc_code'] ?? '' ) ? (string) $orig['doc_code'] : 'JE-' . (int) ( $e['entry_id'] ?? 0 );

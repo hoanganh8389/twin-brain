@@ -106,6 +106,8 @@ final class BizCity_Journal_MCP_Tools {
 		// @mcp bizcity-mcp-standard@1 tool journal.find
 		$R::register( 'journal.find', array(
 			'title'          => 'Tìm trong sổ ghi chép',
+			// [2026-11-14 09:34 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-B2 đợt B — moved up from below the schema: the validator reads 45 lines after the marker and the schema grew (saved_from / saved_to)
+			'mode'           => 'notebook', // PHASE-0.135: kept inside the validator's 45-line marker window (the schema grew by `fuse`)
 			// [2026-10-27 09:58 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.145 S145-L1 (C-7) — the cell keeps the first 900 characters: purpose, paging (has_more / next_offset), folder and mime tips come first, the rest after.
 			'description'    => 'CỬA VÀO bộ nhớ: liệt kê / tổng quan / theo thời gian những gì đã lưu ("tháng này lưu gì", "tài liệu mới nhất", "có gì về…", "ảnh cây") ⇒ gọi TRƯỚC. from/to (YYYY-MM-DD) = khoảng ngày (dòng không có ngày tài liệu so ngày lưu); created_days = N ngày gần đây; layer/kind = loại; q hoặc terms CHỈ khi có chủ đề; mime ["image/*"] = chỉ ảnh, "application/pdf" = PDF. '
 				. 'Trang: has_more=true ⇒ gọi lại y nguyên với offset = next_offset; total_visible = số dòng được xem (total_exact=false ⇒ nói "ít nhất N", thu hẹp thêm). Thư mục Kho tri thức ("kho sản phẩm có gì") ⇒ folder = tên thư mục, KHÔNG dùng q; total=0 ⇒ thư mục chưa có gì. Có mã (TL-47, JB-31) ⇒ ref. Mỗi dòng có why (khớp ở đâu) + score 0..100 (thứ hạng, không phải độ chính xác). '
@@ -122,6 +124,9 @@ final class BizCity_Journal_MCP_Tools {
 				'subject_hash' => array( 'type' => 'string', 'maxLength' => 18, 'description' => 'Mã người/đối tượng lấy từ một dòng đã có (trường subject) hoặc gói chỉ mục. KHÔNG tự tạo.' ),
 				'from'         => array( 'type' => 'string', 'maxLength' => 10, 'description' => 'Từ ngày tài liệu, dạng YYYY-MM-DD (vd 2026-10-01).' ),
 				'to'           => array( 'type' => 'string', 'maxLength' => 10, 'description' => 'Đến ngày tài liệu, dạng YYYY-MM-DD.' ),
+				// [2026-11-14 09:34 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-B2 đợt B — "đã LƯU hôm nay / tuần này" is the booking day, not the date on the paper (from / to)
+				'saved_from'   => array( 'type' => 'string', 'maxLength' => 10, 'pattern' => '^[0-9]{4}-[0-9]{2}-[0-9]{2}$', 'description' => 'Từ NGÀY LƯU vào kho (không phải ngày ghi trên giấy), YYYY-MM-DD. Dùng cho "hôm nay / tuần này đã lưu gì".' ),
+				'saved_to'     => array( 'type' => 'string', 'maxLength' => 10, 'pattern' => '^[0-9]{4}-[0-9]{2}-[0-9]{2}$', 'description' => 'Đến NGÀY LƯU vào kho, YYYY-MM-DD (cả ngày đó).' ),
 				'limit'        => array( 'type' => 'integer', 'minimum' => 1, 'maximum' => 20, 'description' => 'Số dòng mỗi trang (mặc định 20). Còn nữa khi total > offset + số dòng.' ),
 				'offset'       => array( 'type' => 'integer', 'minimum' => 0, 'description' => 'Bỏ qua bao nhiêu dòng (trang sau = offset + limit).' ),
 				// [2026-10-20 03:30 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.125 Q1 — the row of ONE cell output (a background job proves its product by it, D125-7)
@@ -147,7 +152,6 @@ final class BizCity_Journal_MCP_Tools {
 			'read_only'      => true,
 			'idempotent'     => true,
 			'required_scope' => 'brain.read',
-			'mode'           => 'notebook', // PHASE-0.135: kept inside the validator's 45-line marker window (the schema grew by `fuse`)
 			'handler'        => array( __CLASS__, 'find_mcp' ),
 			'roles'          => array( 'owner', 'staff' ),
 			'scopes'         => array( 'brain.read' ),

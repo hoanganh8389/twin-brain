@@ -1,7 +1,7 @@
 {
   "$schema": "https://bizcity.vn/schema/diagnostics-changelog-v1.json",
   "module_id": "core.twin-core",
-  "owner": "core/twin-core",
+  "owner": "core/runtime/kernel",
   "installer_id": "twin_state",
   "current_version": "2.4.0",
   "version_option": "bizcity_twin_state_db_ver",
@@ -106,19 +106,19 @@
           "type": "twin_hil_opened",
           "required_fields": ["hil_id", "spec_id", "trigger_id", "session_id", "status", "state"],
           "emitter": "BizCity_TwinBrain_HIL_Repository",
-          "schema": "core/twin-core/event-stream/schemas/events/twin_hil_opened.json"
+          "schema": "core/runtime/kernel/event-stream/schemas/events/twin_hil_opened.json"
         },
         {
           "type": "twin_hil_progressed",
           "required_fields": ["hil_id", "session_id", "status", "state"],
           "emitter": "BizCity_TwinBrain_HIL_Repository",
-          "schema": "core/twin-core/event-stream/schemas/events/twin_hil_progressed.json"
+          "schema": "core/runtime/kernel/event-stream/schemas/events/twin_hil_progressed.json"
         },
         {
           "type": "twin_hil_closed",
           "required_fields": ["hil_id", "session_id", "status", "closure_reason", "state"],
           "emitter": "BizCity_TwinBrain_HIL_Repository",
-          "schema": "core/twin-core/event-stream/schemas/events/twin_hil_closed.json"
+          "schema": "core/runtime/kernel/event-stream/schemas/events/twin_hil_closed.json"
         }
       ]
     }

@@ -1,7 +1,8 @@
 {
   "$schema": "https://bizcity.vn/schema/diagnostics-changelog-v1.json",
   "module_id": "core.persona",
-  "owner": "core/persona",
+  "owner": "core/guru",
+  "_stamp_150": "[2026-11-14 05:43 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.150 W5 S150-5.1 — owner was core/persona (folder gone); both tables quarantined in BizCity_Legacy_Table_Policy. Add-on owners are written <addon-slug>/<path>; core owners start with core/, modules/ or plugins/.",
   "installer_id": "persona_guru",
   "current_version": "1.0.1",
   "version_option": "bizcity_persona_guru_db_version",

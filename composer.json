@@ -37,7 +37,7 @@
             "BizCity\\Twin\\": "src/"
         },
         "classmap": [
-            "core/twin-core/contracts/"
+            "core/runtime/kernel/contracts/"
         ],
         "files": [
             "core/bizcity-llm/includes/helpers-deprecation.php"

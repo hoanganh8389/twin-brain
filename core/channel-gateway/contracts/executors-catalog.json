@@ -1,7 +1,7 @@
 {
  "contract": "executors-catalog@1.1.0",
  "source": "executor-registry@1 + connector manifests",
- "count": 130,
+ "count": 127,
  "connectors": [
   {
    "id": "fb_dev",
@@ -1638,24 +1638,6 @@
      ]
     },
     {
-     "id": "contract.template.list",
-     "label": "Xem các hợp đồng mẫu",
-     "risk": "R0",
-     "confirm": "never",
-     "audience": [
-      "owner"
-     ],
-     "schedulable": false,
-     "side_effect": "read",
-     "status": "coded",
-     "group": "contract",
-     "domain": "contract",
-     "scope": "account",
-     "cell_tools": [
-      "list_contract_templates"
-     ]
-    },
-    {
      "id": "document.file.read",
      "label": "Đọc lại file đã gửi trong cuộc trò chuyện",
      "risk": "R0",
@@ -1958,42 +1940,6 @@
      "mode": "channel",
      "cell_tools": [
       "connected_apps_report"
-     ]
-    },
-    {
-     "id": "contract.draft.compose",
-     "label": "Soạn hợp đồng cho khách mới từ mẫu",
-     "risk": "R1",
-     "confirm": "never",
-     "audience": [
-      "owner"
-     ],
-     "schedulable": false,
-     "side_effect": "draft",
-     "status": "coded",
-     "group": "contract",
-     "domain": "contract",
-     "scope": "account",
-     "cell_tools": [
-      "compose_contract"
-     ]
-    },
-    {
-     "id": "contract.template.save",
-     "label": "Lưu hợp đồng mẫu",
-     "risk": "R1",
-     "confirm": "never",
-     "audience": [
-      "owner"
-     ],
-     "schedulable": false,
-     "side_effect": "draft",
-     "status": "coded",
-     "group": "contract",
-     "domain": "contract",
-     "scope": "account",
-     "cell_tools": [
-      "save_contract_template"
      ]
     },
     {

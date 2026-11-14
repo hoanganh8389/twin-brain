@@ -1,7 +1,8 @@
 {
   "$schema": "https://bizcity.vn/schema/diagnostics-changelog-v1.json",
   "module_id": "core.knowledge",
-  "owner": "core/knowledge",
+  "owner": "core/guru/profile",
+  "_stamp_150": "[2026-11-14 05:43 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.150 W5 S150-5.1 — owner was core/knowledge (folder gone); installer core/guru/profile/includes/class-database.php. Add-on owners are written <addon-slug>/<path>; core owners start with core/, modules/ or plugins/.",
   "installer_id": "bizcity_knowledge",
   "current_version": "3.25.1",
   "version_option": "bizcity_knowledge_db_version",

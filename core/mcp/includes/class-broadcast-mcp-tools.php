@@ -74,6 +74,7 @@ final class BizCity_Broadcast_MCP_Tools {
 	}
 
 	/** @return array{pack:array}|WP_Error */
+	// [2026-11-14 03:31 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.150 S150-1.1 c9-guarded-by: register_tools() registers this handler only when class_exists( 'BizCity_CRM_Announce_Store', false ).
 	public static function pack( array $args, array $ctx ) {
 		$bridge = preg_replace( '/[^0-9]/', '', (string) ( $ctx['account_id'] ?? '' ) );
 		$ref    = (string) ( $args['broadcast_ref'] ?? '' );
@@ -90,6 +91,7 @@ final class BizCity_Broadcast_MCP_Tools {
 		return array( 'pack' => BizCity_CRM_Announce_Store::build_pack( $row, $recipients, $tz ) );
 	}
 
+	// [2026-11-14 03:31 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.150 S150-1.1 c9-guarded-by: only pack() calls it (handler registered when BizCity_CRM_Announce_Store exists).
 	private static function row( string $ref ) {
 		if ( isset( self::$readers['row'] ) ) {
 			return call_user_func( self::$readers['row'], $ref );

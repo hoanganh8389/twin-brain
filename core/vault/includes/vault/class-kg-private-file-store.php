@@ -367,11 +367,16 @@ final class BizCity_KG_Private_File_Store {
 			return new WP_Error( class_exists( 'BizCity_MCP_Error' ) ? BizCity_MCP_Error::QUERY_INVALID : 'query_invalid', 'Cần doc_code hoặc entry_id.', array( 'status' => 400 ) );
 		}
 		$title = $row ? (string) $row['title'] : ( $attach > 0 ? (string) self::raw_title( $attach ) : '' );
-		$text  = self::kg_text( $row ? (int) $row['kg_source_id'] : 0, $attach );
 		// [2026-10-28 05:40 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.145 golden G — a file that was READ (vault:// bản đọc: OCR / vision / extracted text) but not learned has no KG text yet: answer with the reading,
 		// not with text_ready:false (the cell would download a photo it cannot extract and tell the owner "chưa đọc được")
-		if ( '' === trim( $text ) && $row && '' !== $code && class_exists( 'BizCity_Twin_Vault', false ) && method_exists( 'BizCity_Twin_Vault', 'reading_text' ) ) {
+		// [2026-11-14 05:58 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-B1 (R-VAULT-FIRST VF-1) — the Vault reading (.md: pages, tables, a voice note's transcript with [m:ss]) comes FIRST;
+		// the notebook / KG text is only the fallback of a file that has no reading yet (was: KG first, reading only when KG was empty)
+		$text = '';
+		if ( $row && '' !== $code && class_exists( 'BizCity_Twin_Vault', false ) && method_exists( 'BizCity_Twin_Vault', 'reading_text' ) ) {
 			$text = BizCity_Twin_Vault::reading_text( $code, (int) $row['owner_user_id'] );
+		}
+		if ( '' === trim( $text ) ) {
+			$text = self::kg_text( $row ? (int) $row['kg_source_id'] : 0, $attach );
 		}
 		if ( '' === trim( $text ) ) {
 			$url = $attach > 0 ? self::signed_url( $attach ) : '';

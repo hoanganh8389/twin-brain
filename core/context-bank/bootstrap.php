@@ -83,29 +83,10 @@ if ( class_exists( 'BizCity_Context_Bank_Ledger', false ) ) {
 }
 unset( $_context_bank_ledger );
 
-// [2026-09-04 Johnny Chu - Chu Hoàng Anh] PHASE-0.41-CB4.2 — load the channel archive admission owner after the pointer ledger and attach its archive-written hook.
-$_context_bank_channel_archive_adapter = __DIR__ . '/includes/class-context-bank-channel-archive-adapter.php';
-if ( class_exists( 'BizCity_Safe_Loader', false )
-	&& is_file( $_context_bank_channel_archive_adapter )
-	&& is_readable( $_context_bank_channel_archive_adapter ) ) {
-	BizCity_Safe_Loader::require_file( $_context_bank_channel_archive_adapter, 'context_bank.channel_archive_adapter' );
-}
-if ( $_context_bank_on && class_exists( 'BizCity_Context_Bank_Channel_Archive_Adapter' ) ) {
-	BizCity_Context_Bank_Channel_Archive_Adapter::boot();
-}
-unset( $_context_bank_channel_archive_adapter );
-
-// [2026-09-21 OpenAI GPT-5.6 Luna] PHASE-0.63A WP-8.1 — attach the pointer-only CRM pipeline lifecycle adapter.
-$_context_bank_crm_pipeline_adapter = __DIR__ . '/includes/class-context-bank-crm-pipeline-adapter.php';
-if ( class_exists( 'BizCity_Safe_Loader', false )
-	&& is_file( $_context_bank_crm_pipeline_adapter )
-	&& is_readable( $_context_bank_crm_pipeline_adapter ) ) {
-	BizCity_Safe_Loader::require_file( $_context_bank_crm_pipeline_adapter, 'context_bank.crm_pipeline_adapter' );
-}
-if ( $_context_bank_on && class_exists( 'BizCity_Context_Bank_CRM_Pipeline_Adapter', false ) ) {
-	BizCity_Context_Bank_CRM_Pipeline_Adapter::boot();
-}
-unset( $_context_bank_crm_pipeline_adapter );
+// [2026-11-14 07:23 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.150 W2 S150-2.2 — the feature half (channel archive / CRM pipeline / commerce /
+// identity-merge adapters, REST, reconciler, predicate + rollup registries, rollup engine / worker / cron, KG bridge, CRM scope adapter) moved to the
+// notebook add-on (owner 2026-11-14: "context bank đi theo KG"); it is loaded at the END of this file through the add-on locator, switch on only.
+// This file keeps the memory read path that Guru, the channel gateway and brain.context.* need. Event_Stream_Adapter (never loaded) → _archived/PHASE-0.150/.
 
 // [2026-09-01 Johnny Chu] PHASE-CB6.1 — load the bounded search owner after the ledger and before REST consumers.
 $_context_bank_search = __DIR__ . '/includes/class-context-bank-search.php';
@@ -125,22 +106,6 @@ if ( class_exists( 'BizCity_Safe_Loader', false )
 }
 unset( $_context_bank_retrieval_pack );
 
-// [2026-09-01 Johnny Chu] PHASE-CB-MVP — mount the metadata-only REST consumer only for the Context Bank namespace.
-$_context_bank_rest_uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
-if ( $_context_bank_on && false !== strpos( $_context_bank_rest_uri, '/wp-json/bizcity-context/' ) ) {
-	$_context_bank_rest = __DIR__ . '/includes/class-context-bank-rest-controller.php';
-	if ( class_exists( 'BizCity_Safe_Loader', false )
-		&& is_file( $_context_bank_rest )
-		&& is_readable( $_context_bank_rest ) ) {
-		BizCity_Safe_Loader::require_file( $_context_bank_rest, 'context_bank.rest_controller' );
-	}
-	if ( class_exists( 'BizCity_Context_Bank_REST_Controller', false ) ) {
-		BizCity_Context_Bank_REST_Controller::init();
-	}
-	unset( $_context_bank_rest );
-}
-unset( $_context_bank_rest_uri );
-
 // [2026-09-01 Johnny Chu] PHASE-CB4.4 — load the shared memory admission/read adapter after the pointer ledger.
 $_context_bank_memory_adapter = __DIR__ . '/includes/class-context-bank-memory-adapter.php';
 if ( class_exists( 'BizCity_Safe_Loader', false )
@@ -149,57 +114,6 @@ if ( class_exists( 'BizCity_Safe_Loader', false )
 	BizCity_Safe_Loader::require_file( $_context_bank_memory_adapter, 'context_bank.memory_adapter' );
 }
 unset( $_context_bank_memory_adapter );
-
-// [2026-09-01 Johnny Chu] CB3.4 — load the bounded reconciler after the pointer ledger without starting a worker.
-$_context_bank_reconciler = __DIR__ . '/includes/class-context-bank-reconciler.php';
-if ( class_exists( 'BizCity_Safe_Loader', false )
-	&& is_file( $_context_bank_reconciler )
-	&& is_readable( $_context_bank_reconciler ) ) {
-	BizCity_Safe_Loader::require_file( $_context_bank_reconciler, 'context_bank.reconciler' );
-}
-unset( $_context_bank_reconciler );
-
-// [2026-09-01 Johnny Chu] CB2.2.3 — load the typed correlation predicate registry through Safe Loader.
-$_context_bank_predicate_registry = __DIR__ . '/contracts/class-context-bank-predicate-registry.php';
-if ( class_exists( 'BizCity_Safe_Loader', false )
-	&& is_file( $_context_bank_predicate_registry )
-	&& is_readable( $_context_bank_predicate_registry ) ) {
-	BizCity_Safe_Loader::require_file( $_context_bank_predicate_registry, 'context_bank.predicate_registry' );
-}
-if ( class_exists( 'BizCity_Context_Bank_Predicate_Registry', false ) ) {
-	BizCity_Context_Bank_Predicate_Registry::register_builtins();
-}
-unset( $_context_bank_predicate_registry );
-
-// [2026-09-01 Johnny Chu] CB2.2.4 — load declarative rollup definitions without starting workers or writing state.
-$_context_bank_rollup_registry = __DIR__ . '/contracts/class-context-bank-rollup-registry.php';
-if ( class_exists( 'BizCity_Safe_Loader', false )
-	&& is_file( $_context_bank_rollup_registry )
-	&& is_readable( $_context_bank_rollup_registry ) ) {
-	BizCity_Safe_Loader::require_file( $_context_bank_rollup_registry, 'context_bank.rollup_registry' );
-}
-if ( class_exists( 'BizCity_Context_Bank_Rollup_Registry', false ) ) {
-	BizCity_Context_Bank_Rollup_Registry::register_builtins();
-}
-unset( $_context_bank_rollup_registry );
-
-// [2026-09-01 Johnny Chu] PHASE-CB5.1 — load the side-effect-free rollup reducer after declarative definitions; workers remain deferred.
-$_context_bank_rollup_engine = __DIR__ . '/includes/class-context-bank-rollup-engine.php';
-if ( class_exists( 'BizCity_Safe_Loader', false )
-	&& is_file( $_context_bank_rollup_engine )
-	&& is_readable( $_context_bank_rollup_engine ) ) {
-	BizCity_Safe_Loader::require_file( $_context_bank_rollup_engine, 'context_bank.rollup_engine' );
-}
-unset( $_context_bank_rollup_engine );
-
-// [2026-09-02 Johnny Chu] PHASE-CB5.1 — load the resumable rollup worker after the reducer; no worker is scheduled or executed here.
-$_context_bank_rollup_worker = __DIR__ . '/includes/class-context-bank-rollup-worker.php';
-if ( class_exists( 'BizCity_Safe_Loader', false )
-	&& is_file( $_context_bank_rollup_worker )
-	&& is_readable( $_context_bank_rollup_worker ) ) {
-	BizCity_Safe_Loader::require_file( $_context_bank_rollup_worker, 'context_bank.rollup_worker' );
-}
-unset( $_context_bank_rollup_worker );
 
 // [2026-09-01 Johnny Chu] PHASE-CB6.2 — load the side-effect-free KG candidate gate; KG-Hub remains the semantic owner.
 $_context_bank_kg_policy = __DIR__ . '/includes/class-context-bank-kg-candidate-policy.php';
@@ -210,31 +124,6 @@ if ( class_exists( 'BizCity_Safe_Loader', false )
 }
 unset( $_context_bank_kg_policy );
 
-// [2026-09-02 Johnny Chu] PHASE-CB6.3 — load the KG promotion bridge after the candidate gate; promotion remains feature-gated and does not start at bootstrap.
-$_context_bank_kg_bridge = __DIR__ . '/includes/class-context-bank-kg-bridge.php';
-if ( class_exists( 'BizCity_Safe_Loader', false )
-	&& is_file( $_context_bank_kg_bridge )
-	&& is_readable( $_context_bank_kg_bridge ) ) {
-	BizCity_Safe_Loader::require_file( $_context_bank_kg_bridge, 'context_bank.kg_bridge' );
-}
-if ( $_context_bank_on && class_exists( 'BizCity_Context_Bank_KG_Bridge', false ) ) {
-	// [2026-09-03 Johnny Chu - Chu Hoàng Anh] PHASE-CB6.4 — attach the bounded KG recheck dispatcher without scheduling work at bootstrap.
-	add_action( BizCity_Context_Bank_KG_Bridge::RECHECK_HOOK, array( 'BizCity_Context_Bank_KG_Bridge', 'run_recheck' ), 10, 1 );
-}
-unset( $_context_bank_kg_bridge );
-
-// [2026-09-02 Johnny Chu] PHASE-CB4.3 — load the Woo projection adapter after the Context Bank pointer and filestore owners.
-$_context_bank_commerce_adapter = __DIR__ . '/includes/class-context-bank-commerce-adapter.php';
-if ( class_exists( 'BizCity_Safe_Loader', false )
-	&& is_file( $_context_bank_commerce_adapter )
-	&& is_readable( $_context_bank_commerce_adapter ) ) {
-	BizCity_Safe_Loader::require_file( $_context_bank_commerce_adapter, 'context_bank.commerce_adapter' );
-}
-if ( $_context_bank_on && class_exists( 'BizCity_Context_Bank_Commerce_Adapter', false ) ) {
-	BizCity_Context_Bank_Commerce_Adapter::boot();
-}
-unset( $_context_bank_commerce_adapter );
-
 // [2026-09-01 Johnny Chu] PHASE-CB7.1 — load the server-owned scope resolver without starting MPR/TwinBrain retrieval.
 $_context_bank_scope_resolver = __DIR__ . '/includes/class-context-bank-scope-resolver.php';
 if ( class_exists( 'BizCity_Safe_Loader', false )
@@ -243,15 +132,6 @@ if ( class_exists( 'BizCity_Safe_Loader', false )
 	BizCity_Safe_Loader::require_file( $_context_bank_scope_resolver, 'context_bank.scope_resolver' );
 }
 unset( $_context_bank_scope_resolver );
-
-// [2026-09-08 03:00 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.41-CX2 — load the CRM user-inbox-scope bridge after the Context Bank scope owner.
-$_context_bank_crm_scope_adapter = __DIR__ . '/includes/class-context-bank-crm-scope-adapter.php';
-if ( class_exists( 'BizCity_Safe_Loader', false )
-	&& is_file( $_context_bank_crm_scope_adapter )
-	&& is_readable( $_context_bank_crm_scope_adapter ) ) {
-	BizCity_Safe_Loader::require_file( $_context_bank_crm_scope_adapter, 'context_bank.crm_scope_adapter' );
-}
-unset( $_context_bank_crm_scope_adapter );
 
 // [2026-09-02 Johnny Chu - Chu Hoàng Anh] PHASE-CB4.5 — load the Skill reference adapter through the Context Bank owner so canonical Skill lifecycle events reach one pointer-only projection path.
 $_context_bank_rule_reference_adapter = __DIR__ . '/includes/class-context-bank-rule-reference-adapter.php';
@@ -265,26 +145,13 @@ if ( $_context_bank_on && class_exists( 'BizCity_Context_Bank_Rule_Reference_Ada
 }
 unset( $_context_bank_rule_reference_adapter );
 
-// [2026-09-02 11:29 AM Johnny Chu - Chu Hoàng Anh] PHASE-CB5 — mount the post-commit identity merge rollup consumer through the guarded Context Bank loader.
-$_context_bank_identity_merge_adapter = __DIR__ . '/includes/class-context-bank-identity-merge-adapter.php';
-if ( class_exists( 'BizCity_Safe_Loader', false )
-	&& is_file( $_context_bank_identity_merge_adapter )
-	&& is_readable( $_context_bank_identity_merge_adapter ) ) {
-	BizCity_Safe_Loader::require_file( $_context_bank_identity_merge_adapter, 'context_bank.identity_merge_adapter' );
+// [2026-11-14 07:23 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.150 W2 S150-2.2 — feature half from the notebook add-on, switch on only (PHASE-0.144 S144-CB0,
+// default off). No notebook ⇒ '' ⇒ nothing loads: the memory read path above still serves Guru, the channel gateway and brain.context.*.
+if ( $_context_bank_on && class_exists( 'BizCity_Addon_Locator' ) ) {
+	$_context_bank_features = BizCity_Addon_Locator::file( 'notebook/context-bank/bootstrap.php' );
+	if ( '' !== $_context_bank_features && class_exists( 'BizCity_Safe_Loader', false ) ) {
+		BizCity_Safe_Loader::require_file( $_context_bank_features, 'context_bank.notebook_features' );
+	}
+	unset( $_context_bank_features );
 }
-if ( $_context_bank_on && class_exists( 'BizCity_Context_Bank_Identity_Merge_Adapter', false ) ) {
-	BizCity_Context_Bank_Identity_Merge_Adapter::boot();
-}
-unset( $_context_bank_identity_merge_adapter );
-
-// [2026-09-02 11:29 AM Johnny Chu - Chu Hoàng Anh] PHASE-CB5 — load the bounded rollup scheduler through Safe Loader; the explicit tenant flag controls recurring work.
-$_context_bank_rollup_cron = __DIR__ . '/includes/class-context-bank-rollup-cron.php';
-if ( class_exists( 'BizCity_Safe_Loader', false )
-	&& is_file( $_context_bank_rollup_cron )
-	&& is_readable( $_context_bank_rollup_cron ) ) {
-	BizCity_Safe_Loader::require_file( $_context_bank_rollup_cron, 'context_bank.rollup_cron' );
-}
-if ( $_context_bank_on && class_exists( 'BizCity_Context_Bank_Rollup_Cron', false ) ) {
-	BizCity_Context_Bank_Rollup_Cron::boot();
-}
-unset( $_context_bank_rollup_cron );
+unset( $_context_bank_on );

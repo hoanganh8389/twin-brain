@@ -1,7 +1,8 @@
 {
   "$schema": "https://bizcity.vn/schema/diagnostics-changelog-v1.json",
   "module_id": "modules.twinchat.memory.notes",
-  "owner": "modules/twinchat",
+  "owner": "core/conversation",
+  "_stamp_150": "[2026-11-14 05:43 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.150 W5 S150-5.1 — owner was modules/twinchat; installer core/conversation/includes/class-conversation-store.php. Add-on owners are written <addon-slug>/<path>; core owners start with core/, modules/ or plugins/.",
   "installer_id": "twinchat",
   "current_version": "1.0.0",
   "version_option": "bizcity_memory_notes_db_ver",

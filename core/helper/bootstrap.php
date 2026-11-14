@@ -87,7 +87,8 @@ BizCity_Safe_Loader::require_file( $_helper_includes . 'trait-rest-error.php', '
 BizCity_Safe_Loader::require_file( __DIR__ . '/class-bizcity-codec.php', 'helper.codec' );
 
 // [2026-09-02 17:40 PM Johnny Chu - Chu Hoàng Anh] HOTFIX — load the phone identity contract before the helper can be booted by an alternate entrypoint.
-$_helper_framework_contracts = dirname( __DIR__ ) . '/twin-core/contracts/framework-contracts.php';
+// [2026-11-14 09:51 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 W1 (D151-2, Q151-1) — twin-core → runtime/kernel.
+$_helper_framework_contracts = dirname( __DIR__ ) . '/runtime/kernel/contracts/framework-contracts.php';
 if ( is_file( $_helper_framework_contracts ) && is_readable( $_helper_framework_contracts ) ) {
 	BizCity_Safe_Loader::require_file( $_helper_framework_contracts, 'twin_core.framework_contract' );
 }

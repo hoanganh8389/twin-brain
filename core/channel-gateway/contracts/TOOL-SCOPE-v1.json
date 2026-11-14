@@ -479,21 +479,6 @@
    "bot_id": "change_group_avatar"
   },
   {
-   "key": "compose_contract",
-   "domain": "contract",
-   "flows": [
-    "owner_chat"
-   ],
-   "surfaces": [
-    "zalo_personal"
-   ],
-   "skills": [],
-   "label": "Soạn hợp đồng cho khách mới từ mẫu",
-   "risk": "R1",
-   "executor": "contract.draft.compose",
-   "bot_id": ""
-  },
-  {
    "key": "connected_apps_approve",
    "domain": "apps",
    "flows": [
@@ -1117,21 +1102,6 @@
    "bot_id": ""
   },
   {
-   "key": "list_contract_templates",
-   "domain": "contract",
-   "flows": [
-    "owner_chat"
-   ],
-   "surfaces": [
-    "zalo_personal"
-   ],
-   "skills": [],
-   "label": "Xem các hợp đồng mẫu",
-   "risk": "R0",
-   "executor": "contract.template.list",
-   "bot_id": ""
-  },
-  {
    "key": "list_pending_group_members",
    "domain": "zalo_group",
    "flows": [
@@ -1615,21 +1585,6 @@
    "risk": "R2",
    "executor": "zalo.group.manage",
    "bot_id": "review_pending_group_member"
-  },
-  {
-   "key": "save_contract_template",
-   "domain": "contract",
-   "flows": [
-    "owner_chat"
-   ],
-   "surfaces": [
-    "zalo_personal"
-   ],
-   "skills": [],
-   "label": "Lưu hợp đồng mẫu",
-   "risk": "R1",
-   "executor": "contract.template.save",
-   "bot_id": ""
   },
   {
    "key": "save_memory",

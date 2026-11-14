@@ -28,6 +28,8 @@ if ( class_exists( 'BizCity_Vault_Upload', false ) ) {
 final class BizCity_Vault_Upload {
 
 	const NS = 'bizcity-vault/v1';
+	/** [2026-11-14 12:31 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-C7 — default folder of a note from Zalo (05 Ghi chú, BizCity_Twin_Vault::DEFAULT_FOLDERS) */
+	const NOTE_FOLDER = '05';
 
 	private static $hooked = false;
 
@@ -169,6 +171,8 @@ final class BizCity_Vault_Upload {
 				'title'    => mb_substr( '' !== $first ? $first : ( '' !== $title ? $title : 'Ghi chú từ Zalo' ), 0, 120 ),
 				'markdown' => $text,
 				'path'     => '/note/zalo-' . substr( md5( '' !== $mid ? $mid : $scope_id . ':' . $idx . ':' . $text ), 0, 12 ) . '.md',
+				// [2026-11-14 12:31 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-C7 (Q149-1) — a note from Zalo is filed in 05 Ghi chú (an item may name another folder)
+				'folder'   => '' !== (string) ( $it['folder'] ?? '' ) ? (string) $it['folder'] : self::NOTE_FOLDER,
 			), array( 'owner_user_id' => $user_id, 'role' => 'owner', 'vrole' => 'owner' ) ) : new WP_Error( 'vault_unavailable', 'Kho tri thức chưa sẵn sàng trên site này.' );
 			if ( is_wp_error( $note ) ) {
 				$failed[] = array( 'index' => $idx, 'kind' => $kind, 'code' => $note->get_error_code(), 'error' => $note->get_error_message(), 'file_name' => '' );

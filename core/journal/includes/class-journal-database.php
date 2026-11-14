@@ -307,6 +307,15 @@ final class BizCity_Journal_Database {
 	 * @param array $filter {owner_user_id, all?, kind?, kinds?[], kind_prefix?, tags?[], subject_hash?, from?, to?, q?, limit, offset}
 	 * @return array{items:array,total:int}
 	 */
+	/** [2026-11-14 09:34 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-B2 đợt B — a real calendar day "YYYY-MM-DD", else ''. Pure. */
+	public static function saved_day( $v ): string {
+		$s = is_string( $v ) ? trim( $v ) : '';
+		if ( 1 !== preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', $s, $m ) || ! checkdate( (int) $m[2], (int) $m[3], (int) $m[1] ) ) {
+			return '';
+		}
+		return $s;
+	}
+
 	public function find_indexed( array $filter ): array {
 		global $wpdb;
 		$owner = (int) ( $filter['owner_user_id'] ?? 0 );
@@ -352,6 +361,18 @@ final class BizCity_Journal_Database {
 		if ( ! empty( $filter['created_days'] ) && (int) $filter['created_days'] > 0 ) {
 			$where[]  = 'created_at >= DATE_SUB(CURDATE(), INTERVAL %d DAY)';
 			$params[] = min( 3650, (int) $filter['created_days'] ) - 1;
+		}
+		// [2026-11-14 09:34 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-B2 đợt B ("hôm nay anh lưu gì" missed TL-7302: a drawing dated 13/04 saved 14/11) — saved_from / saved_to
+		// (YYYY-MM-DD) = the day the row was BOOKED (created_at, the DB's own clock as created_days / date_fallback), never the date on the paper. A bad value is ignored.
+		$saved_from = self::saved_day( $filter['saved_from'] ?? '' );
+		$saved_to   = self::saved_day( $filter['saved_to'] ?? '' );
+		if ( '' !== $saved_from ) {
+			$where[]  = 'created_at >= %s';
+			$params[] = $saved_from . ' 00:00:00';
+		}
+		if ( '' !== $saved_to ) {
+			$where[]  = 'created_at < DATE_ADD(%s, INTERVAL 1 DAY)';
+			$params[] = $saved_to;
 		}
 		if ( ! empty( $filter['to'] ) && $created_fb ) {
 			$where[]  = '(doc_date <= %s OR (doc_date IS NULL AND created_at < DATE_ADD(%s, INTERVAL 1 DAY)))'; // PHASE-0.145 S145-L1: the whole last day
@@ -478,6 +499,9 @@ final class BizCity_Journal_Database {
 		$offset = max( 0, (int) ( $filter['offset'] ?? 0 ) );
 		$list_params = array_merge( $params, array( $limit, $offset ) );
 		$order  = $created_fb ? 'COALESCE(doc_date, DATE(created_at)) DESC, id DESC' : 'doc_date DESC, id DESC';
+		if ( '' !== self::saved_day( $filter['saved_from'] ?? '' ) || '' !== self::saved_day( $filter['saved_to'] ?? '' ) ) {
+			$order = 'created_at DESC, id DESC'; // [2026-11-14 09:34 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-B2 đợt B — a "saved on" list reads newest saved first
+		}
 		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$this->table} WHERE {$where_sql} ORDER BY {$order} LIMIT %d OFFSET %d", $list_params ), ARRAY_A ) ?: array();
 		return array( 'items' => $rows, 'total' => $total );
 	}
@@ -559,6 +583,18 @@ final class BizCity_Journal_Database {
 
 	/** Recent rows for `doc_index` (doc 92 §5). */
 	/** [2026-10-17 08:40 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.121 B1-2 (S121-A2, I-1) — full rows for the cell registry (newest first), hidden states excluded. */
+	/**
+	 * [2026-11-14 10:45 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-B8 — the person's "ghi nhớ" notes (kind common.note), newest first, on their OWN query so an old note
+	 * never falls out of the doc_index pack behind the 120 newest register rows (an owner with 241 rows lost what they asked to remember weeks ago).
+	 */
+	public function note_rows( int $owner_user_id, int $max = 20 ): array {
+		global $wpdb;
+		return $wpdb->get_results( $wpdb->prepare(
+			"SELECT * FROM {$this->table} WHERE owner_user_id = %d AND kind = %s AND status NOT IN ('archived','void') ORDER BY updated_at DESC, id DESC LIMIT %d",
+			$owner_user_id, 'common.note', max( 1, min( 50, $max ) )
+		), ARRAY_A ) ?: array();
+	}
+
 	public function register_rows( int $owner_user_id, int $max = 120 ): array {
 		global $wpdb;
 		return $wpdb->get_results( $wpdb->prepare(
@@ -1053,10 +1089,11 @@ final class BizCity_Journal_Database {
 }
 
 // [2026-10-20 10:53 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.126 S126-G3 (GAP-123-5) — the spine table is owned by core/kg-hub: changelog core.knowledge.kg-hub.json (was core.skills).
+// [2026-11-14 05:43 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.150 S150-5.2 — the KG left core for the notebook add-on (PHASE-0.148); the journal stays core (D148-9) ⇒ own changelog core.journal.json, module id core.journal (registry metadata only, no DDL change).
 if ( class_exists( 'BizCity_Schema_Registry' ) ) {
 	BizCity_Schema_Registry::register(
 		'bizcity_journal_entries',
-		'core.knowledge.kg-hub',
+		'core.journal',
 		BizCity_Journal_Database::SCHEMA_VERSION,
 		BizCity_Journal_Database::SCHEMA_VERSION_KEY,
 		array( 'BizCity_Journal_Database', 'maybe_install' )
