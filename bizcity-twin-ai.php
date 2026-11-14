@@ -275,20 +275,22 @@ unset( $_bizcity_loader_registry_file );
 // Tool plugins extend BizCity_Intent_Provider ở file scope → class phải tồn tại sớm.
 // Market đăng ký plugins_loaded @1 → phải load trước khi hook fires.
 // Framework v1 contracts (Phase 0.99.2) — opt-in interfaces + module base class.
-require_once __DIR__ . '/core/twin-core/contracts/framework-contracts.php';
+// [2026-11-14 09:51 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 W1 (D151-2, Q151-1) — core/twin-core moved whole to core/runtime/kernel/ (the kernel the channels, bizcity-llm and TwinShell stand on; class names unchanged).
+// A shim stays at core/twin-core/includes/interface-twin-tool.php for the add-ons that require that path.
+require_once __DIR__ . '/core/runtime/kernel/contracts/framework-contracts.php';
 // [2026-07-29 Johnny Chu] PHASE-1.21-F — opt-in content contracts for new extensions.
-require_once __DIR__ . '/core/twin-core/contracts/content-contracts.php';
+require_once __DIR__ . '/core/runtime/kernel/contracts/content-contracts.php';
 // [2026-08-12 Johnny Chu] PHASE-1.26-CONTRACT — opt-in navigation metadata registry; WordPress registration remains central.
-require_once __DIR__ . '/core/twin-core/contracts/class-admin-navigation-registry.php';
+require_once __DIR__ . '/core/runtime/kernel/contracts/class-admin-navigation-registry.php';
 // Phase 0.99.3 — Module registry (implements `bizcity_register_module` filter).
-require_once __DIR__ . '/core/twin-core/contracts/class-module-registry.php';
+require_once __DIR__ . '/core/runtime/kernel/contracts/class-module-registry.php';
 // [2026-10-09 11:46 PM Johnny Chu - Chu Hoàng Anh] CORE-REDUCTION WP-20 Z-2b — load the Zalo Brain registry class (record-only,
 // no side effects at load) before the Twin Plugin SDK and Setting Panel registry, so their D96-16 wrappers can mirror the
 // items core modules register at file load (channel-gateway, twinshell, …). boot() + REST stay where they are below.
 require_once __DIR__ . '/core/runtime/class-zalo-brain.php';
 // [2026-08-29 Johnny Chu] PHASE-VIBE-SDK — expose the seven-verb facade before extension plugins load.
-if ( file_exists( __DIR__ . '/core/twin-core/contracts/class-twin-plugin-sdk.php' ) ) {
-    require_once __DIR__ . '/core/twin-core/contracts/class-twin-plugin-sdk.php';
+if ( file_exists( __DIR__ . '/core/runtime/kernel/contracts/class-twin-plugin-sdk.php' ) ) {
+    require_once __DIR__ . '/core/runtime/kernel/contracts/class-twin-plugin-sdk.php';
 }
 // [2026-09-02 Johnny Chu] PHASE-0.41-CRM-ONE-BRAIN — load the lightweight manifest registry and bounded framework facade before extensions boot.
 if ( ! class_exists( 'BizCity_Safe_Loader', false ) ) {
@@ -299,9 +301,9 @@ if ( ! class_exists( 'BizCity_Safe_Loader', false ) ) {
     unset( $_bizcity_safe_loader );
 }
 $_bizcity_framework_contract_files = array(
-    __DIR__ . '/core/twin-core/contracts/class-framework-manifest-registry.php',
-    __DIR__ . '/core/twin-core/contracts/class-framework-sdk.php',
-    __DIR__ . '/core/twin-core/contracts/class-setting-panel-registry.php',
+    __DIR__ . '/core/runtime/kernel/contracts/class-framework-manifest-registry.php',
+    __DIR__ . '/core/runtime/kernel/contracts/class-framework-sdk.php',
+    __DIR__ . '/core/runtime/kernel/contracts/class-setting-panel-registry.php',
 );
 foreach ( $_bizcity_framework_contract_files as $_bizcity_framework_contract_file ) {
     if ( is_file( $_bizcity_framework_contract_file ) && is_readable( $_bizcity_framework_contract_file ) ) {
@@ -332,7 +334,7 @@ if ( ! $_bizcity_twinchat_admin_shell_request ) {
     }
     unset( $_bizcity_conversation_bootstrap );
     // [2026-08-29 Johnny Chu] PHASE-VIBE-SDK — make taxonomy-gated event registration available before extension plugins boot.
-    $bizcity_event_contract_dir = __DIR__ . '/core/twin-core/event-stream';
+    $bizcity_event_contract_dir = __DIR__ . '/core/runtime/kernel/event-stream';
     if ( class_exists( 'BizCity_Safe_Loader', false ) ) {
         $bizcity_event_taxonomy = $bizcity_event_contract_dir . '/class-twin-event-taxonomy.php';
         $bizcity_event_registry = $bizcity_event_contract_dir . '/class-twin-event-registry.php';
@@ -675,11 +677,11 @@ if ( function_exists( 'add_action' ) ) {
     }, 1 );
 }
 // [2026-08-09 Johnny Chu] R-PERF — defer Twin Core file graph and schema work off plain frontend HTML.
-if ( $_bizcity_admin_ctx && ! $_bizcity_twinchat_admin_shell_request && file_exists( __DIR__ . '/core/twin-core/bootstrap.php' ) ) {
+if ( $_bizcity_admin_ctx && ! $_bizcity_twinchat_admin_shell_request && file_exists( __DIR__ . '/core/runtime/kernel/bootstrap.php' ) ) {
     if ( class_exists( 'BizCity_Loader_Ownership_Registry', false ) ) {
-        BizCity_Loader_Ownership_Registry::claim( 'twin_core', 'main_plugin', __DIR__ . '/core/twin-core/bootstrap.php', defined( 'BIZCITY_TWIN_AI_VERSION' ) ? BIZCITY_TWIN_AI_VERSION : '', 'early_loader', 'pre_plugins_loaded' );
+        BizCity_Loader_Ownership_Registry::claim( 'twin_core', 'main_plugin', __DIR__ . '/core/runtime/kernel/bootstrap.php', defined( 'BIZCITY_TWIN_AI_VERSION' ) ? BIZCITY_TWIN_AI_VERSION : '', 'early_loader', 'pre_plugins_loaded' );
     }
-    require_once __DIR__ . '/core/twin-core/bootstrap.php';
+    require_once __DIR__ . '/core/runtime/kernel/bootstrap.php';
     if ( class_exists( 'BizCity_Loader_Ownership_Registry', false ) ) {
         BizCity_Loader_Ownership_Registry::transition( 'twin_core', BizCity_Loader_Ownership_Registry::STATE_CONTRACT_READY, 'main_plugin', 'pre_plugins_loaded' );
     }
@@ -1027,13 +1029,23 @@ if ( $_bizcity_admin_ctx
 // [2026-10-03 Claude Sonnet 5] CORE-REDUCTION REVERSAL (owner: "core twinbrain nên chuyển về, còn automation
 // thì tách ra" — Ask Brain + vertical brain chat are core, required functionality, not something that may be
 // legitimately absent) — TwinBrain moved back to core/twinbrain/. Automation stays split in the add-on.
-$_bizcity_twinbrain_bootstrap = __DIR__ . '/core/twinbrain/bootstrap.php';
-if ( $_bizcity_admin_ctx
-    && ! $_bizcity_twinchat_admin_shell_request
-    && is_file( $_bizcity_twinbrain_bootstrap ) ) {
-    require_once $_bizcity_twinbrain_bootstrap;
+// [2026-11-14 10:49 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 W3 (D151-1, owner 14/11) — core/twinbrain left core: its bootstrap is now
+// bizcity-twin-notebook/twinbrain/entry.php (MPR + verticals entry, chat half, Retrieval_Facade). Same request gate as before. The two kernel
+// classes it used to load (Vertical_Bridge_Registry, Guru_Policy — channel gateway, Guru, TwinWeb, Automation use them) are loaded here first,
+// from core/runtime/kernel/includes/, so they do not depend on the notebook.
+if ( $_bizcity_admin_ctx && ! $_bizcity_twinchat_admin_shell_request ) {
+    foreach ( array( 'class-twinbrain-vertical-bridge-registry.php', 'class-twinbrain-guru-policy.php' ) as $_bizcity_tb_kernel ) {
+        if ( is_readable( __DIR__ . '/core/runtime/kernel/includes/' . $_bizcity_tb_kernel ) ) {
+            require_once __DIR__ . '/core/runtime/kernel/includes/' . $_bizcity_tb_kernel;
+        }
+    }
+    unset( $_bizcity_tb_kernel );
+    $_bizcity_twinbrain_entry = class_exists( 'BizCity_Addon_Locator', false ) ? BizCity_Addon_Locator::file( 'notebook/twinbrain/entry.php' ) : '';
+    if ( '' !== $_bizcity_twinbrain_entry ) {
+        require_once $_bizcity_twinbrain_entry;
+    }
+    unset( $_bizcity_twinbrain_entry );
 }
-unset( $_bizcity_twinbrain_bootstrap );
 
 // [2026-09-16 Johnny Chu - Chu Hoàng Anh] PHASE-0-SETTING-PANEL-G6-HOTFIX3 — the Twin CRM admin menu must
 // exist on EVERY wp-admin page. It cannot live behind the `$_bizcity_admin_ctx && !$_bizcity_twinchat_admin_shell_request`

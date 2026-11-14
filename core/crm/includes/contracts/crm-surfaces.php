@@ -15,6 +15,7 @@ if ( ! function_exists( 'bizcity_crm_surface_descriptors' ) ) {
 	 *
 	 * @return array<string,array<string,mixed>>
 	 */
+	// [2026-11-14 03:31 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.150 S150-1.1 c9-guarded-by: 'render' callables (BizCity_CRM_Admin_Menu, plugin-only) are data; includes/class-admin-menu.php skips any that is not is_callable().
 	function bizcity_crm_surface_descriptors(): array {
 		return array(
 			'crm.inbox' => array( 'id' => 'crm.inbox', 'title' => 'CRM Inbox', 'label' => 'Inbox', 'slug' => 'bizcity-crm', 'action' => 'crm.inbox.open', 'public_slug' => '/crm/', 'render' => array( 'BizCity_CRM_Admin_Menu', 'render_inbox_page' ),

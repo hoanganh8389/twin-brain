@@ -160,6 +160,7 @@ final class BizCity_CRM_Tasks_MCP_Service {
 		} );
 	}
 
+	// [2026-11-14 03:31 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.150 S150-1.1 c9-guarded-by: register_tools() registers crm.task.create only when has_tasks() && class_exists( 'BizCity_CRM_Task_Handoff' ).
 	public static function task_create( array $args, array $ctx ) {
 		return BizCity_MCP_Action_Support::run_as( $ctx, static function ( $uid ) use ( $args ) {
 			$plan = self::task_plan( $args, $uid );

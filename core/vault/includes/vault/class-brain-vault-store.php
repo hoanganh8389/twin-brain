@@ -31,7 +31,8 @@ if ( class_exists( 'BizCity_Brain_Vault_Store', false ) ) {
 final class BizCity_Brain_Vault_Store {
 
 	const CONTRACT     = 'twin-vault@1.0.0'; // [2026-10-24 09:04 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.134 D134-5 — was brain-markdown@1.0.0 (files with that schema are read as an alias, never rewritten)
-	const NAMESPACES   = array( 'documents', 'images', 'notes', 'sheet-descriptors', 'job-summaries', 'skills' );
+	// [2026-11-14 11:04 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 M1 — + `memory`: Guru memory as Markdown (BizCity_Memory_Vault_Store), under the vault root and its deny files.
+	const NAMESPACES   = array( 'documents', 'images', 'notes', 'sheet-descriptors', 'job-summaries', 'skills', 'memory' );
 	const TYPES        = array( 'document', 'image', 'note', 'sheet-descriptor', 'job-summary' );
 	const MAX_MD_BYTES = 524288; // 512 KB per representation revision
 	const MAX_REVS     = 50;
@@ -385,7 +386,47 @@ final class BizCity_Brain_Vault_Store {
 		if ( $tags ) {
 			$fm['tags'] = array_slice( $tags, 0, 20 );
 		}
+		// [2026-11-14 03:16 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-C5 (doc 10 §3) — where the file came from (`source`) and the original's file name, projected from the row
+		// (origin.surface / original.file_name); the reading's front-matter is then ref · kind · source · original · read · keywords (tags) in every file
+		$src = self::source_of( (string) ( $entry['origin']['surface'] ?? '' ) );
+		if ( '' !== $src ) {
+			$fm['source'] = $src;
+		}
+		$oname = trim( (string) preg_replace( '/[\x00-\x1F\x7F]+/u', ' ', (string) ( $entry['original']['file_name'] ?? '' ) ) );
+		if ( '' !== $oname ) {
+			$fm['original_name'] = mb_substr( $oname, 0, 160 );
+		}
 		return $fm;
+	}
+
+	/**
+	 * [2026-11-14 03:16 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-C5 — one word for where a file came from (front-matter `source`, the Vault's "Nguồn" / "Từ"),
+	 * from the row's origin.surface: zalo · zalo_group · facebook · web_upload · editor · assistant · other ('' = unknown). Pure.
+	 */
+	public static function source_of( string $surface ): string {
+		$s = strtolower( trim( $surface ) );
+		if ( '' === $s ) {
+			return '';
+		}
+		if ( false !== strpos( $s, 'zalo_group' ) || false !== strpos( $s, 'group_capture' ) ) {
+			return 'zalo_group';
+		}
+		if ( false !== strpos( $s, 'zalo' ) ) {
+			return 'zalo';
+		}
+		if ( false !== strpos( $s, 'facebook' ) || false !== strpos( $s, 'messenger' ) ) {
+			return 'facebook';
+		}
+		if ( in_array( $s, array( 'cell', 'automation', 'job' ), true ) ) {
+			return 'assistant';
+		}
+		if ( false !== strpos( $s, 'upload' ) || false !== strpos( $s, 'twinchat' ) || 'web' === $s ) {
+			return 'web_upload';
+		}
+		if ( false !== strpos( $s, 'editor' ) ) {
+			return 'editor';
+		}
+		return 'other';
 	}
 
 	/** Split "---\n<yaml>---\n<body>" ⇒ {frontmatter: array, body}. Unknown / forbidden keys are dropped (MD-1). Pure. */

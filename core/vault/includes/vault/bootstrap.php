@@ -35,6 +35,7 @@ foreach ( array(
 	'class-kg-private-file-store.php' => 'vault.private_file_store', // PHASE-0.121 S121-L1 — private originals (was a plain require_once)
 	'class-notebook-port.php'           => 'vault.notebook_port', // [2026-11-13 Johnny Chu - Chu Hoàng Anh] PHASE-0.148 W2 S148-C7 — the one door to the optional notebook
 	'class-vault-knowledge-search.php'  => 'vault.knowledge_search', // [2026-11-13 Johnny Chu - Chu Hoàng Anh] PHASE-0.148 W2 S148-C8 — knowledge.search from the Vault
+	'class-memory-vault-store.php'      => 'vault.memory_store', // [2026-11-14 11:04 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 M1 — Guru memory as .md (memory-vault@1)
 ) as $_bizcity_vault_rel => $_bizcity_vault_label ) {
 	$_bizcity_vault_path = __DIR__ . '/' . $_bizcity_vault_rel;
 	if ( class_exists( 'BizCity_Safe_Loader' ) ) {

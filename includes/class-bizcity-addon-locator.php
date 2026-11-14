@@ -233,8 +233,37 @@ final class BizCity_Addon_Locator {
 
 	/** Brain add-on folder; the canonical path when the add-on is on no disk (callers test is_dir() on it). */
 	public static function dir(): string {
+		// [2026-11-14 10:15 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 W2 (D151-3) — the brain parts (twinbrain-mpr, twinbrain-verticals, memory) now ship
+		// inside the notebook add-on; bizcity-twin-brain-addon is the transition fallback until it is archived (S151-5.2).
+		$notebook_brain = self::notebook_brain_dir();
+		if ( '' !== $notebook_brain ) {
+			return $notebook_brain;
+		}
 		$found = self::addon_dir( 'twin-brain' );
 		return '' !== $found ? $found : self::plugin_dir( self::SLUG );
+	}
+
+	/**
+	 * [2026-11-14 10:15 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 W2 (D151-3) — the notebook carries the brain only when ALL three part bootstraps are
+	 * on disk: the WHOLE brain tree is chosen once (notebook or brain add-on), never file by file. A half-uploaded notebook would otherwise mix two trees
+	 * whose relative requires load the same class twice (fatal). '' ⇒ use bizcity-twin-brain-addon as before.
+	 */
+	private static function notebook_brain_dir(): string {
+		static $memo = null;
+		if ( null !== $memo ) {
+			return $memo;
+		}
+		$memo = '';
+		if ( ! self::addon_available( 'notebook' ) ) {
+			return $memo;
+		}
+		$nb = self::addon_dir( 'notebook' );
+		foreach ( array( 'twinbrain-mpr/bootstrap.php', 'twinbrain-verticals/bootstrap.php', 'memory/bootstrap.php' ) as $boot ) {
+			if ( ! is_file( $nb . $boot ) ) {
+				return $memo;
+			}
+		}
+		return $memo = $nb;
 	}
 
 	private static function addon_is_active( string $tag ): bool {
@@ -261,7 +290,8 @@ final class BizCity_Addon_Locator {
 
 	/** Availability of bizcity-twin-brain-addon (TwinBrain, memory, knowledge-legacy) — unrelated to Automation. */
 	public static function available(): bool {
-		return self::addon_available( 'twin-brain' );
+		// [2026-11-14 10:15 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 W2 — the brain is available from the notebook (all three parts) or, as before, from the brain add-on.
+		return '' !== self::notebook_brain_dir() || self::addon_available( 'twin-brain' );
 	}
 
 	/** Availability of bizcity-automation specifically. */

@@ -1,7 +1,8 @@
 {
   "$schema": "https://bizcity.vn/schema/diagnostics-changelog-v1.json",
   "module_id": "core.intent.memory.episodic",
-  "owner": "core/intent",
+  "owner": "core/guru/memory",
+  "_stamp_150": "[2026-11-14 05:43 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.150 W5 S150-5.1 — owner was core/intent; installer core/guru/memory/includes/class-episodic-memory.php. Add-on owners are written <addon-slug>/<path>; core owners start with core/, modules/ or plugins/.",
   "installer_id": "intent",
   "current_version": "1.3.0",
   "version_option": "bizcity_memory_episodic_db_ver",

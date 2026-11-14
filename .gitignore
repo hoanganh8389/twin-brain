@@ -188,5 +188,5 @@ vendor/
 # [2026-10-25] PHASE-0.126 R126-DIAG — diagnostic admin pages (same list as bin/dev-only-paths.txt). Already-tracked copies: run
 # `git rm --cached <path>` once on the VPS (R-DL-6).
 /core/channel-gateway/includes/class-cg-debug-logger-admin.php
-/core/twin-core/event-stream/class-twin-event-inspector-page.php
+/core/runtime/kernel/event-stream/class-twin-event-inspector-page.php
 /core/helper/class-bizcity-log-explorer.php

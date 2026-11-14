@@ -46,6 +46,8 @@ final class BizCity_Twin_Vault {
 	 * a site's saved list is added back on read (sites that saved 10–40 get 50 · 55 · 60); a number the person already uses keeps the person's folder.
 	 */
 	const DEFAULT_FOLDERS = array(
+		// [2026-11-14 12:31 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-C7 (Q149-1 chủ chốt) — 05 Ghi chú, right after Home: every "ghi nhớ" from Zalo lands here
+		array( 'n' => '05', 'label' => 'Ghi chú', 'icon' => '📝', 'aliases' => array( 'ghi chú', 'ghi nhớ', 'note', 'notes', 'memo' ) ),
 		array( 'n' => '10', 'label' => 'Học & dạy', 'icon' => '🎓', 'aliases' => array( 'học', 'dạy', 'đào tạo', 'giáo án', 'bài học', 'training' ) ),
 		array( 'n' => '20', 'label' => 'Công việc', 'icon' => '💼', 'aliases' => array( 'công việc', 'vận hành', 'quy trình', 'sop' ) ),
 		array( 'n' => '30', 'label' => 'Dự án', 'icon' => '🗂️', 'aliases' => array( 'dự án', 'project' ) ),
@@ -733,9 +735,25 @@ final class BizCity_Twin_Vault {
 		return 'owner' === $r ? 'owner' : 'staff';
 	}
 
+	/**
+	 * [2026-11-14 11:04 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 M1 (Q151-8 chủ chốt: trí nhớ chỉ chủ xem) — sub-folders that are stricter than their
+	 * number. Access was per folder number only ("05" ⇒ owner + staff); `05/tri-nho` (Guru memory, personal data about customers) is owner only.
+	 */
+	const SUBFOLDER_ACCESS = array( '05/tri-nho' => 'owner' );
+
+	/** Pure: the access of a filed folder — a stricter sub-folder first, else its number's access, else staff. */
+	public static function access_of_folder( string $vfolder, array $map ): string {
+		foreach ( self::SUBFOLDER_ACCESS as $sub => $access ) {
+			if ( $vfolder === $sub || 0 === strpos( $vfolder, $sub . '/' ) ) {
+				return $access;
+			}
+		}
+		return (string) ( $map[ substr( $vfolder, 0, 2 ) ] ?? 'staff' );
+	}
+
 	/** Pure: is an item filed in `$vfolder` visible to `$role` given the access map (folder number ⇒ access)? Unfiled / unknown folder ⇒ staff level (as before folders existed). */
 	public static function folder_visible( string $vfolder, string $role, array $map ): bool {
-		return self::access_allows( (string) ( $map[ substr( $vfolder, 0, 2 ) ] ?? 'staff' ), $role );
+		return self::access_allows( self::access_of_folder( $vfolder, $map ), $role ); // PHASE-0.151 M1: sub-folder access first
 	}
 
 	/**
@@ -753,7 +771,7 @@ final class BizCity_Twin_Vault {
 	/** The access of the folder a Journal row is filed in (meta.folder); 'staff' when unfiled / unknown. Used by brain-access decide(). */
 	public static function folder_access_of( array $entry ): string {
 		$f = self::clean_folder( $entry['meta']['folder'] ?? '' );
-		return '' === $f ? 'staff' : ( self::access_map()[ substr( $f, 0, 2 ) ] ?? 'staff' );
+		return '' === $f ? 'staff' : self::access_of_folder( $f, self::access_map() ); // PHASE-0.151 M1: 05/tri-nho ⇒ owner
 	}
 
 	/** @return array<string,string> folder number ⇒ access */
@@ -784,6 +802,12 @@ final class BizCity_Twin_Vault {
 				$bad[] = (string) $n;
 			}
 		}
+		// [2026-11-14 11:04 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 M1 — a stricter sub-folder (05/tri-nho) is hidden too; Journal find() matches a folder by prefix.
+		foreach ( self::SUBFOLDER_ACCESS as $sub => $a ) {
+			if ( ! self::access_allows( $a, $role ) ) {
+				$bad[] = (string) $sub;
+			}
+		}
 		$ids = array();
 		// [2026-10-25 Johnny Chu - Chu Hoàng Anh] PHASE-0.126 R126-SEC M4 — the public view also drops unfiled library notes
 		// (unfiled = staff level); its own src: rows stay (see item_visible).
@@ -794,7 +818,7 @@ final class BizCity_Twin_Vault {
 		$map = self::access_map();
 		foreach ( self::lib_files() as $f ) {
 			$fn = self::clean_folder( $f['fm']['folder'] ?? '' );
-			if ( in_array( substr( $fn, 0, 2 ), $bad, true ) || ( $public && ! self::folder_visible( $fn, $role, $map ) ) ) {
+			if ( in_array( substr( $fn, 0, 2 ), $bad, true ) || ! self::folder_visible( $fn, $role, $map ) ) { // PHASE-0.151 M1: folder_visible also covers sub-folders (public included, as before)
 				$ids[ 'lib:' . $f['path'] ] = 1;
 			}
 		}
@@ -896,6 +920,10 @@ final class BizCity_Twin_Vault {
 
 	private static function row_item( array $e, string $type ): array {
 		$item = array( 'id' => 'src:' . (string) $e['ref_code'], 'type' => $type, 'title' => (string) ( $e['meta']['title'] ?? '' ) ?: (string) $e['title'], 'source_ref' => (string) ( $e['resource']['source_ref'] ?? $e['ref_code'] ), 'entry_id' => (int) $e['entry_id'], 'vault_folder' => self::clean_folder( $e['meta']['folder'] ?? '' ), 'people' => ! empty( $e['meta']['people'] ) || (int) ( $e['contact_id'] ?? 0 ) > 0, 'updated_at' => (string) ( $e['updated_at'] ?? '' ), 'has_markdown' => ! empty( $e['resource']['representations'] ) );
+		// [2026-11-14 03:16 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-C5 — where the file came from, for the folder table's "Nguồn" column (one word, from origin.surface)
+		if ( class_exists( 'BizCity_Brain_Vault_Store' ) ) {
+			$item['source'] = BizCity_Brain_Vault_Store::source_of( (string) ( $e['origin']['surface'] ?? '' ) );
+		}
 		// [2026-10-25 12:30 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.137 S137-B2 (D137-1) — every Kho tri thức row carries its four steps + level (tier decides: the pack is not read per row)
 		if ( class_exists( 'BizCity_Journal_Pipeline' ) ) {
 			$level            = BizCity_Journal_Pipeline::level_of( $e, null );
@@ -906,7 +934,13 @@ final class BizCity_Twin_Vault {
 	}
 
 	private static function lib_item( array $f ): array {
-		return array( 'id' => 'lib:' . $f['path'], 'type' => self::lib_type( $f['path'] ), 'title' => self::title_of( $f['fm'], $f['md'], $f['path'] ), 'path' => $f['path'], 'source_ref' => (string) ( $f['fm']['source_ref'] ?? '' ), 'updated_at' => gmdate( 'Y-m-d\TH:i:s\Z', $f['mtime'] ), 'folder' => dirname( $f['path'] ), 'vault_folder' => self::clean_folder( $f['fm']['folder'] ?? '' ) );
+		$item = array( 'id' => 'lib:' . $f['path'], 'type' => self::lib_type( $f['path'] ), 'title' => self::title_of( $f['fm'], $f['md'], $f['path'] ), 'path' => $f['path'], 'source_ref' => (string) ( $f['fm']['source_ref'] ?? '' ), 'updated_at' => gmdate( 'Y-m-d\TH:i:s\Z', $f['mtime'] ), 'folder' => dirname( $f['path'] ), 'vault_folder' => self::clean_folder( $f['fm']['folder'] ?? '' ) );
+		// [2026-11-14 03:16 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-C5 — a library note: its own `source` when it says one, a Zalo "ghi nhớ" (note/zalo-*.md, keep_batch) = zalo, any other note = written in the editor
+		if ( 'note' === $item['type'] ) {
+			$own            = strtolower( (string) ( $f['fm']['source'] ?? '' ) );
+			$item['source'] = in_array( $own, array( 'zalo', 'zalo_group', 'facebook', 'web_upload', 'editor', 'assistant', 'other' ), true ) ? $own : ( 0 === strpos( (string) $f['path'], 'note/zalo-' ) ? 'zalo' : 'editor' );
+		}
+		return $item;
 	}
 
 	/** The six roots with counts and their newest children (≤ 100 rows each + every library file). */
@@ -1064,7 +1098,8 @@ final class BizCity_Twin_Vault {
 		return array(
 			'contract' => self::CONTRACT, 'id' => 'src:' . $row['ref_code'], 'type' => $type, 'title' => (string) ( $row['meta']['title'] ?? '' ) ?: (string) $row['title'],
 			'source_ref' => (string) ( $row['resource']['source_ref'] ?? $row['ref_code'] ), 'entry_id' => (int) $row['entry_id'], 'vault_folder' => self::clean_folder( $row['meta']['folder'] ?? '' ),
-			'frontmatter' => is_wp_error( $read ) ? array( 'schema' => 'twin-vault@1', 'type' => $type, 'source_ref' => (string) ( $row['resource']['source_ref'] ?? $row['ref_code'] ) ) : (array) $read['frontmatter'],
+			// [2026-11-14 03:16 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-C5 — a reading written before `source` existed still shows it: projected from the row on read (the file is not rewritten)
+			'frontmatter' => ( is_wp_error( $read ) ? array( 'schema' => 'twin-vault@1', 'type' => $type, 'source_ref' => (string) ( $row['resource']['source_ref'] ?? $row['ref_code'] ) ) : (array) $read['frontmatter'] ) + array_filter( array( 'source' => class_exists( 'BizCity_Brain_Vault_Store' ) ? BizCity_Brain_Vault_Store::source_of( (string) ( $row['origin']['surface'] ?? '' ) ) : '' ), 'strlen' ),
 			'markdown' => $md, 'chars' => is_wp_error( $read ) ? 0 : (int) $read['chars'], 'next_offset' => is_wp_error( $read ) ? null : $read['next_offset'],
 			'has_markdown' => ! is_wp_error( $read ), 'about' => (string) ( $row['meta']['about'] ?? $row['summary'] ?? '' ),
 			'original_url' => self::original_url( $row, $ctx ), // [2026-10-24 09:38 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.134 (UI gap) — signed, only when this person may fetch the file

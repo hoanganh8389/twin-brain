@@ -292,6 +292,18 @@ final class BizCity_Zalo_Personal_Knowledge_Capture {
 		);
 		// [2026-10-27 09:44 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.145 S145-L7 — a batch rides ONE job (one download pass, one receipt); the batch keys travel with it
 		$job += self::batch_of( $batch );
+		// [2026-11-14 10:33 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-B7 (ca thật tranghana 22:23: "ghi nhớ …" ⇒ knowledge_capture_queued 15:23:04Z, never a done / failed /
+		// skipped ⇒ the note never reached 05 Ghi chú while the bot had said "đã lưu") — a text-only "ghi nhớ" needs no download, so it is written NOW, inside this request
+		// (one .md + one journal row, ~1 s), not left to WP-cron of a quiet site. Files keep the cron path (CDN download). An inline throw falls back to the cron path below.
+		if ( empty( $job['batch_ref'] ) && self::only_text_items( $items ) ) {
+			try {
+				self::log( 'knowledge_capture_inline', array( 'account_id' => $bridge_id, 'origin' => 'owner_capture', 'items' => count( $items ), 'thread' => 'owner_1to1' ) );
+				self::run_job( $job );
+				return array( 'ok' => true, 'code' => '', 'duplicate' => false, 'inline' => true );
+			} catch ( \Throwable $e ) {
+				self::log( 'knowledge_capture_inline_failed', array( 'account_id' => $bridge_id, 'reason' => get_class( $e ) ), 'error' );
+			}
+		}
 		// WP ignores the same hook+args within 10 minutes: a Hub retry of the same idempotency_key schedules nothing new.
 		// The real dedupe (survives past that window, and past an already-run job) is the per-item message_id lookup
 		// BizCity_KG_Channel_Notebook_Bridge does inside capture() below — this flag is only the fast, best-effort signal.
@@ -502,12 +514,53 @@ final class BizCity_Zalo_Personal_Knowledge_Capture {
 		return $label;
 	}
 
+	/**
+	 * [2026-11-13 10:38 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.148 S148-C15 — true when every item is a text note (owner's "ghi nhớ"), none is a file.
+	 *
+	 * @param array $items job items from items_from_owner_capture()
+	 */
+	public static function only_text_items( array $items ): bool {
+		$n = 0;
+		foreach ( $items as $it ) {
+			if ( ! is_array( $it ) ) {
+				continue;
+			}
+			if ( 'text' !== (string) ( $it['kind'] ?? '' ) || isset( $it['attachment'] ) ) {
+				return false;
+			}
+			++$n;
+		}
+		return $n > 0;
+	}
+
+	/**
+	 * [2026-11-14 03:30 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-C3 — which store a Zalo capture goes to. Vault when it is there and Vault-first is on (default),
+	 * or for a "ghi nhớ" (text only), or when there is no notebook bridge at all (the caller then skips if the Vault is missing too). Notebook only as the fallback. Pure.
+	 */
+	public static function use_vault( bool $vault_ok, bool $bridge_ok, bool $only_text, bool $vault_first ): bool {
+		if ( ! $bridge_ok ) {
+			return true;
+		}
+		return $vault_ok && ( $vault_first || $only_text );
+	}
+
 	// ── internals ────────────────────────────────────────────────────────
 
 	private static function capture( array $job, string $bridge_id ): void {
 		// [2026-11-13 Johnny Chu - Chu Hoàng Anh] PHASE-0.148 W2 S148-C10 (D148-6) — without the notebook (no KG bridge) the files still go into the Vault
 		// (BizCity_Vault_Upload::keep_batch); only a site with neither is skipped.
-		$via_vault = ! class_exists( 'BizCity_KG_Channel_Notebook_Bridge' );
+		// [2026-11-13 10:38 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.148 S148-C15 (chủ: "ghi nhớ" = tạo file .md ghi chú trong core/vault, không ghi vào notebook) —
+		// a batch made only of text items is the owner's "ghi nhớ …" (notebook_remember): it ALWAYS goes to the Vault as a .md note.
+		// [2026-11-14 03:30 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-C3 (Q149-5, R-VAULT-FIRST VF-1/VF-2) — files too: every Zalo capture goes Vault-first on every site
+		// (keep_batch ⇒ original in the private store ⇒ journal row ⇒ the cell's read sweep ⇒ .md reading). The per-day notebook is only the fallback of a site without the Vault,
+		// or when the filter `bizcity_vault_first_capture` is switched off (one place to roll back). "Học sâu" stays a person's click (FP-7).
+		$vault_ok  = class_exists( 'BizCity_Vault_Upload' ) && method_exists( 'BizCity_Vault_Upload', 'keep_batch' );
+		$via_vault = self::use_vault(
+			$vault_ok,
+			class_exists( 'BizCity_KG_Channel_Notebook_Bridge' ),
+			self::only_text_items( (array) ( $job['items'] ?? array() ) ),
+			(bool) apply_filters( 'bizcity_vault_first_capture', true, $bridge_id )
+		);
 		if ( $via_vault && ! ( class_exists( 'BizCity_Vault_Upload' ) && method_exists( 'BizCity_Vault_Upload', 'keep_batch' ) ) ) {
 			self::done( 'knowledge_capture_skipped', array( 'account_id' => $bridge_id, 'reason' => 'kg_hub_not_loaded' ), 'invalid_metadata' );
 			return;
@@ -869,7 +922,8 @@ final class BizCity_Zalo_Personal_Knowledge_Capture {
 			$more    = array_sum( $n ) - count( $stored ) - count( $dups ) - count( $failed );
 		}
 		if ( $stored ) {
-			$parts[] = '✅ Đã lưu an toàn ' . $n['stored'] . ' tài liệu vào Bộ não thứ hai (bản gốc chỉ anh/chị xem được):' . "\n" . implode( "\n", $stored );
+			// [2026-11-14 03:30 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-C3 (R-VAULT-FIRST: the user-facing word is "Kho tri thức") — was "vào Bộ não thứ hai"
+			$parts[] = '✅ Đã lưu an toàn ' . $n['stored'] . ' tài liệu vào Kho tri thức (bản gốc chỉ anh/chị xem được):' . "\n" . implode( "\n", $stored );
 		}
 		if ( $dups ) {
 			$parts[] = '📎 Đã có sẵn, em không lưu lại lần nữa:' . "\n" . implode( "\n", $dups );

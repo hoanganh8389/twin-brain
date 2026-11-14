@@ -287,7 +287,7 @@ class BizCity_Video_Client {
 	private function request( string $name, string $url, array $args, array $context = array() ) {
 		// [2026-08-10 Johnny Chu] PHASE-1.24-VIDEO-KLING — lazy-load the canonical reliability boundary; never fall back to raw transport.
 		if ( ! class_exists( 'BizCity_Twin_Reliable_HTTP' ) ) {
-			$reliable_file = dirname( dirname( __DIR__ ) ) . '/twin-core/includes/class-twin-reliable-http.php';
+			$reliable_file = dirname( dirname( __DIR__ ) ) . '/runtime/kernel/includes/class-twin-reliable-http.php' /* [2026-11-14 09:51 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 W1 (D151-2, Q151-1) */;
 			if ( is_readable( $reliable_file ) ) {
 				require_once $reliable_file;
 			}
