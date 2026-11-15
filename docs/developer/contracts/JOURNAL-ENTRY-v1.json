@@ -13,7 +13,7 @@
       "type": "string",
       "column": "kind",
       "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*){1,2}$",
-      "from": "journal-kinds@1 (core/kg-hub/contracts/JOURNAL-KINDS-v1.json + filter bizcity_journal_kinds / manifest journal_kinds)"
+      "from": "journal-kinds@1 (core/journal/contracts/JOURNAL-KINDS-v1.json + filter bizcity_journal_kinds / manifest journal_kinds)"
     },
     "title": {
       "type": "string",
@@ -290,7 +290,7 @@
     "job": {
       "type": "object|null",
       "column": "metadata.job",
-      "contract": "job-link@1.0.0 (core/kg-hub/contracts/JOB-LINK-v1.json)",
+      "contract": "job-link@1.0.0 (core/journal/contracts/JOB-LINK-v1.json)",
       "shape": {
         "job_id": "job_…",
         "job_ref": "JB-<header id>",

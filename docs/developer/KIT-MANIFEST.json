@@ -11,8 +11,8 @@
     {
       "path": "contracts/BIZCITY-MCP-STANDARD-v1.json",
       "source": "docs/contracts/BIZCITY-MCP-STANDARD-v1.json",
-      "sha256": "4c26e954f726e11d87f7c27f98f7588b74b82c6be48e0e08949b738f1279ce87",
-      "bytes": 95234
+      "sha256": "9f164f12fc1930646ea67ef41172371d6668d7cc3170972049f69fb60b4e61a5",
+      "bytes": 96354
     },
     {
       "path": "contracts/BIZCITY-MCP-TOOL-CONTRACT-v1.md",
@@ -22,27 +22,27 @@
     },
     {
       "path": "contracts/BRAIN-ACCESS-v1.json",
-      "source": "core/kg-hub/contracts/BRAIN-ACCESS-v1.json",
-      "sha256": "aeaf73c2cb45282a010fa76f16a11bc1c1ac5b565e00ec0be5b7496d22b3ac97",
-      "bytes": 4330
+      "source": "core/journal/contracts/BRAIN-ACCESS-v1.json",
+      "sha256": "f8371d9380a88b9849321df52ae17d6f1cc16b94ca282592dce9b04af8636545",
+      "bytes": 5196
     },
     {
       "path": "contracts/JOB-LINK-v1.json",
-      "source": "core/kg-hub/contracts/JOB-LINK-v1.json",
+      "source": "core/journal/contracts/JOB-LINK-v1.json",
       "sha256": "e89790a82e6a1000623c382dce284ec0562bfce4f6444affa56a15793978d914",
       "bytes": 4075
     },
     {
       "path": "contracts/JOURNAL-ENTRY-v1.json",
-      "source": "core/kg-hub/contracts/JOURNAL-ENTRY-v1.json",
-      "sha256": "4bc16efb79efa6de30a5cca3091ca71c543413302d0ce692f29085a7a22c50c1",
-      "bytes": 11258
+      "source": "core/journal/contracts/JOURNAL-ENTRY-v1.json",
+      "sha256": "c4671311c678d309b469529229a2def023aeee86f4a5ad3b17b632dd40eb4bd8",
+      "bytes": 11260
     },
     {
       "path": "contracts/JOURNAL-KINDS-v1.json",
-      "source": "core/kg-hub/contracts/JOURNAL-KINDS-v1.json",
-      "sha256": "8167e5d5d37a1575cee45fd9fdd0ee18741ac5ae7ddfed80dd974886cd531ef9",
-      "bytes": 30278
+      "source": "core/journal/contracts/JOURNAL-KINDS-v1.json",
+      "sha256": "7c0b27d90a71d70c37e1fd0293d8e4fd064a2f47b175307add93b3b79e9034b0",
+      "bytes": 49447
     },
     {
       "path": "contracts/ZALO-BRAIN-EXTENSION-CONTRACT-v1.json",
@@ -59,8 +59,8 @@
     {
       "path": "contracts/ZALO-BRAIN-HOOKS-v1.json",
       "source": "docs/contracts/ZALO-BRAIN-HOOKS-v1.json",
-      "sha256": "65ca31a97b41e136debb8ffcd5e98b26a9e4f379d56b9ce8869ce1ce30f706b4",
-      "bytes": 148785
+      "sha256": "53c0e141d9ffdbc74f9dbea8b42e45bf633018e9547ce42e6754d9674d7a0d3b",
+      "bytes": 105760
     },
     {
       "path": "tools/validate-extension.mjs",

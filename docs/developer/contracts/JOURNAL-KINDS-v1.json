@@ -1,6 +1,6 @@
 {
     "$schema": "https://bizcity.vn/schema/journal-kinds-v1.json",
-    "contract": "journal-kinds@1.5.0",
+    "contract": "journal-kinds@1.8.0",
     "_stamp": "[2026-10-12 10:05 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.100 S100-L16 — new file (doc 92 §3, R-JOURNAL R-JN-6/R-JN-7).",
     "_stamp_d100_25": "[2026-10-12 11:00 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.100 D100-25 owner-only — education = the owner's own study: no per-subject (per-student) notebook, no child-sensitive stamp. nutrition/nanny keep theirs (the person cared for is a subject, not an audience).",
     "families": {
@@ -60,6 +60,12 @@
             "per_subject_notebook_default": false,
             "sensitive": "personal"
         },
+        "crm": {
+            "label": "Khách hàng",
+            "per_subject_notebook_default": false,
+            "sensitive": "personal",
+            "_stamp": "[2026-10-24 05:42 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.133 S133-Ma (D133-M5) — the CRM digest and form leads get their own family (was common.document)"
+        },
         "media": {
             "label": "Sản phẩm của trợ lý",
             "per_subject_notebook_default": false,
@@ -115,6 +121,18 @@
                 "title",
                 "doc_date",
                 "summary"
+            ],
+            "card_view": [
+                {
+                    "key": "doc_date",
+                    "label": "Ngày",
+                    "type": "date"
+                },
+                {
+                    "key": "summary",
+                    "label": "Nội dung",
+                    "type": "long_text"
+                }
             ]
         },
         "common.receipt": {
@@ -137,6 +155,18 @@
                 "title",
                 "doc_date",
                 "summary"
+            ],
+            "card_view": [
+                {
+                    "key": "doc_date",
+                    "label": "Ngày tài liệu",
+                    "type": "date"
+                },
+                {
+                    "key": "summary",
+                    "label": "Tóm tắt",
+                    "type": "long_text"
+                }
             ]
         },
         "common.photo": {
@@ -148,6 +178,18 @@
                 "title",
                 "doc_date",
                 "summary"
+            ],
+            "card_view": [
+                {
+                    "key": "doc_date",
+                    "label": "Ngày chụp",
+                    "type": "date"
+                },
+                {
+                    "key": "summary",
+                    "label": "Mô tả",
+                    "type": "long_text"
+                }
             ]
         },
         "common.voice_note": {
@@ -420,6 +462,50 @@
                 "category",
                 "counterparty",
                 "description",
+                "reverses",
+                "deal_ref"
+            ],
+            "card_view": [
+                {
+                    "key": "type",
+                    "label": "Loại",
+                    "type": "enum",
+                    "enum": {
+                        "income": "Thu",
+                        "expense": "Chi",
+                        "in": "Thu",
+                        "out": "Chi"
+                    }
+                },
+                {
+                    "key": "amount",
+                    "label": "Số tiền",
+                    "type": "money",
+                    "currency_key": "currency"
+                },
+                {
+                    "key": "category",
+                    "label": "Hạng mục",
+                    "type": "text"
+                },
+                {
+                    "key": "counterparty",
+                    "label": "Người / đơn vị",
+                    "type": "person"
+                },
+                {
+                    "key": "description",
+                    "label": "Diễn giải",
+                    "type": "text"
+                },
+                {
+                    "key": "deal_ref",
+                    "label": "Mã thương vụ",
+                    "type": "text"
+                }
+            ],
+            "hide": [
+                "currency",
                 "reverses"
             ]
         },
@@ -436,7 +522,51 @@
                 "amount",
                 "currency",
                 "due_date",
-                "note"
+                "note",
+                "deal_ref"
+            ],
+            "card_view": [
+                {
+                    "key": "party",
+                    "label": "Người / đơn vị",
+                    "type": "person"
+                },
+                {
+                    "key": "direction",
+                    "label": "Chiều",
+                    "type": "enum",
+                    "enum": {
+                        "owe_me": "Họ nợ mình",
+                        "i_owe": "Mình nợ họ",
+                        "receivable": "Họ nợ mình",
+                        "payable": "Mình nợ họ"
+                    }
+                },
+                {
+                    "key": "amount",
+                    "label": "Số tiền",
+                    "type": "money",
+                    "currency_key": "currency"
+                },
+                {
+                    "key": "due_date",
+                    "label": "Hạn",
+                    "type": "date"
+                },
+                {
+                    "key": "note",
+                    "label": "Ghi chú",
+                    "type": "text"
+                },
+                {
+                    "key": "deal_ref",
+                    "label": "Mã thương vụ",
+                    "type": "text"
+                }
+            ],
+            "hide": [
+                "type",
+                "currency"
             ]
         },
         "fin.plan": {
@@ -582,7 +712,55 @@
             "card_fields": [
                 "title",
                 "channel",
-                "published_at"
+                "published_at",
+                "provider",
+                "provider_native_id",
+                "canonical_url",
+                "verification",
+                "evidence_ref"
+            ],
+            "card_view": [
+                {
+                    "key": "channel",
+                    "label": "Kênh",
+                    "type": "text"
+                },
+                {
+                    "key": "provider",
+                    "label": "Nơi đăng",
+                    "type": "text"
+                },
+                {
+                    "key": "published_at",
+                    "label": "Đăng lúc",
+                    "type": "datetime"
+                },
+                {
+                    "key": "verification",
+                    "label": "Trạng thái",
+                    "type": "enum",
+                    "enum": {
+                        "verified": "Đã xác minh",
+                        "pending": "Đang chờ xác minh",
+                        "failed": "Thất bại",
+                        "unknown": "Chưa rõ"
+                    }
+                },
+                {
+                    "key": "canonical_url",
+                    "label": "Liên kết",
+                    "type": "link"
+                },
+                {
+                    "key": "provider_native_id",
+                    "label": "Mã bài trên kênh",
+                    "type": "text"
+                },
+                {
+                    "key": "evidence_ref",
+                    "label": "Bằng chứng",
+                    "type": "text"
+                }
             ]
         },
         "research.competitor": {
@@ -721,6 +899,31 @@
                 "sources",
                 "level",
                 "subject"
+            ],
+            "card_view": [
+                {
+                    "key": "name",
+                    "label": "Tên notebook",
+                    "type": "text"
+                },
+                {
+                    "key": "subject",
+                    "label": "Chủ đề",
+                    "type": "text"
+                },
+                {
+                    "key": "sources",
+                    "label": "Số nguồn",
+                    "type": "number"
+                },
+                {
+                    "key": "level",
+                    "label": "Mức hiểu",
+                    "type": "text"
+                }
+            ],
+            "hide": [
+                "notebook_id"
             ]
         },
         "sheet.define": {
@@ -784,7 +987,74 @@
                 "method",
                 "ref_kind",
                 "page",
-                "quote"
+                "quote",
+                "provider",
+                "provider_native_id",
+                "canonical_url",
+                "verification",
+                "channel",
+                "sent_at",
+                "version"
+            ],
+            "card_view": [
+                {
+                    "key": "provider",
+                    "label": "Nơi đăng / gửi",
+                    "type": "text"
+                },
+                {
+                    "key": "channel",
+                    "label": "Kênh gửi",
+                    "type": "text"
+                },
+                {
+                    "key": "verification",
+                    "label": "Trạng thái",
+                    "type": "enum",
+                    "enum": {
+                        "verified": "Đã xác minh",
+                        "pending": "Đang chờ xác minh",
+                        "failed": "Thất bại",
+                        "unknown": "Chưa rõ"
+                    }
+                },
+                {
+                    "key": "provider_native_id",
+                    "label": "Mã bên ngoài",
+                    "type": "text"
+                },
+                {
+                    "key": "canonical_url",
+                    "label": "Liên kết",
+                    "type": "link"
+                },
+                {
+                    "key": "sent_at",
+                    "label": "Gửi lúc",
+                    "type": "datetime"
+                },
+                {
+                    "key": "version",
+                    "label": "Bản",
+                    "type": "text"
+                },
+                {
+                    "key": "method",
+                    "label": "Cách xác minh",
+                    "type": "text"
+                },
+                {
+                    "key": "quote",
+                    "label": "Trích",
+                    "type": "long_text"
+                }
+            ],
+            "hide": [
+                "evidence_id",
+                "recipient",
+                "provider_account_ref",
+                "event",
+                "ref_kind"
             ]
         },
         "skill.define": {
@@ -923,6 +1193,245 @@
                 "by"
             ],
             "_stamp": "[2026-10-21 11:04 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.127 S127-B16/C3 (feedback@1, D127-8) — the owner's 👍 / 👎 / \"sửa…\" on a finished job (Zalo reply or Quest Map); role lesson (👎 / sửa) or input (👍) under the JB- header. A ledger row is not knowledge: learn none."
+        },
+        "crm.digest": {
+            "family": "crm",
+            "label": "Bản tin CRM",
+            "icon": "users",
+            "sensitive": "personal",
+            "learn": "index",
+            "card_fields": [
+                "contacts",
+                "messages",
+                "items"
+            ],
+            "card_view": [
+                {
+                    "key": "contacts",
+                    "label": "Khách được cập nhật",
+                    "type": "number"
+                },
+                {
+                    "key": "messages",
+                    "label": "Tin nhắn",
+                    "type": "number"
+                },
+                {
+                    "key": "items",
+                    "label": "Diễn biến",
+                    "type": "items"
+                }
+            ],
+            "hide": [
+                "count",
+                "seen",
+                "as_of",
+                "text_count"
+            ],
+            "_stamp": "[2026-10-24 05:42 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.133 S133-Ma (doc 81 §6, D133-M5) — the daily CRM digest row of the context producer `crm` (about built by code; items = time · what)"
+        },
+        "crm.lead": {
+            "family": "crm",
+            "label": "Khách để lại thông tin",
+            "icon": "form",
+            "sensitive": "personal",
+            "learn": "index",
+            "card_fields": [
+                "leads",
+                "items",
+                "full_name",
+                "company",
+                "phone",
+                "email",
+                "note",
+                "source_doc",
+                "deal_ref"
+            ],
+            "card_view": [
+                {
+                    "key": "leads",
+                    "label": "Số liên hệ",
+                    "type": "number"
+                },
+                {
+                    "key": "items",
+                    "label": "Liên hệ",
+                    "type": "items"
+                },
+                {
+                    "key": "full_name",
+                    "label": "Họ tên",
+                    "type": "person"
+                },
+                {
+                    "key": "company",
+                    "label": "Công ty",
+                    "type": "text"
+                },
+                {
+                    "key": "phone",
+                    "label": "Điện thoại",
+                    "type": "text"
+                },
+                {
+                    "key": "email",
+                    "label": "Email",
+                    "type": "text"
+                },
+                {
+                    "key": "note",
+                    "label": "Ghi chú",
+                    "type": "text"
+                },
+                {
+                    "key": "source_doc",
+                    "label": "Tài liệu gốc",
+                    "type": "link"
+                },
+                {
+                    "key": "deal_ref",
+                    "label": "Mã thương vụ",
+                    "type": "text"
+                }
+            ],
+            "hide": [
+                "count",
+                "seen",
+                "as_of",
+                "text_count",
+                "contact_ref"
+            ],
+            "_stamp": "[2026-10-24 05:42 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.133 S133-Ma (doc 81 §6, D133-M5) — Contact Form 7 leads of the day (form name only; submitted fields never stored, R-ZBF-8)",
+            "_stamp_140": "[2026-10-25 09:49 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.140 S140-L7 (D140-18) — also ONE customer the cell read from a business card / customer form and the owner said ok: card {full_name, company, phone, email, note, source_doc TL-n, deal_ref?}, row linked to the CRM contact by journal.record contact_id (subject_hash). The daily CF7 digest shape (leads, items) is unchanged."
+        },
+        "crm.deal": {
+            "family": "crm",
+            "label": "Thương vụ khách",
+            "icon": "deal",
+            "sensitive": "personal",
+            "learn": "index",
+            "card_fields": [
+                "deal_ref",
+                "stage",
+                "amount",
+                "currency",
+                "party",
+                "source_doc",
+                "note"
+            ],
+            "card_view": [
+                {
+                    "key": "stage",
+                    "label": "Bước",
+                    "type": "enum",
+                    "enum": {
+                        "quote": "Báo giá",
+                        "order": "Đơn hàng",
+                        "contract": "Hợp đồng",
+                        "paid": "Đã thu đủ"
+                    }
+                },
+                {
+                    "key": "party",
+                    "label": "Khách / đối tác",
+                    "type": "person"
+                },
+                {
+                    "key": "amount",
+                    "label": "Giá trị",
+                    "type": "money",
+                    "currency_key": "currency"
+                },
+                {
+                    "key": "deal_ref",
+                    "label": "Mã thương vụ",
+                    "type": "text"
+                },
+                {
+                    "key": "source_doc",
+                    "label": "Tài liệu gốc",
+                    "type": "link"
+                },
+                {
+                    "key": "note",
+                    "label": "Ghi chú",
+                    "type": "text"
+                }
+            ],
+            "hide": [
+                "currency"
+            ],
+            "_stamp": "[2026-10-25 09:49 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.140 S140-L8 (doc 50 §2/§5, D140-18) — one buying / selling event of a customer (quote · order · contract · paid), linked to the CRM contact (journal.record contact_id) and to the deal by deal_ref ^(CN|TC|DH)-n (= the CN code of the debt opened from the contract / order). Episode keys only: no outcome stored (Q140-12)."
+        },
+        "broadcast.run": {
+            "family": "job",
+            "label": "Lần gửi thông báo",
+            "icon": "job",
+            "sensitive": "",
+            "learn": "none",
+            "card_fields": [
+                "broadcast_ref",
+                "run_ref",
+                "job_ref",
+                "rev",
+                "total",
+                "ok",
+                "failed",
+                "skipped",
+                "started_at",
+                "ended_at",
+                "state"
+            ],
+            "card_view": [
+                {
+                    "key": "state",
+                    "label": "Trạng thái",
+                    "type": "enum",
+                    "enum": {
+                        "completed": "Xong",
+                        "completed_partial": "Xong một phần",
+                        "failed": "Lỗi",
+                        "cancelled": "Đã huỷ",
+                        "skipped_late": "Bỏ vì trễ"
+                    }
+                },
+                {
+                    "key": "total",
+                    "label": "Người nhận",
+                    "type": "text"
+                },
+                {
+                    "key": "ok",
+                    "label": "Đã gửi",
+                    "type": "text"
+                },
+                {
+                    "key": "failed",
+                    "label": "Lỗi",
+                    "type": "text"
+                },
+                {
+                    "key": "skipped",
+                    "label": "Bỏ qua",
+                    "type": "text"
+                },
+                {
+                    "key": "started_at",
+                    "label": "Bắt đầu",
+                    "type": "datetime"
+                },
+                {
+                    "key": "ended_at",
+                    "label": "Kết thúc",
+                    "type": "datetime"
+                }
+            ],
+            "hide": [
+                "broadcast_ref",
+                "run_ref",
+                "job_ref",
+                "rev"
+            ]
         }
     },
     "_stamp_121": "[2026-10-17 07:44 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.121 S121-J6/K5 (R-JOURNAL v1.1-1.3, doc 72 §4, doc 74 §3) — 1.1.0 additive: per-kind `learn` (index|vector|graph; absent = vector), families mkt / research / hr (sensitive personal), kinds common.link, mkt.*, research.*, hr.*. Plugins add their own family = plugin slug (manifest journal_kinds or filter bizcity_journal_kinds).",
@@ -955,7 +1464,8 @@
             "task.progress": "twin_sheet",
             "task.todo": "twin_sheet",
             "track.point": "twin_sheet",
-            "common.instruction": "skill"
+            "common.instruction": "skill",
+            "broadcast.run": "job"
         },
         "by_prefix": {
             "job.": "job",
@@ -994,5 +1504,8 @@
     },
     "_stamp_126": "[2026-10-20 10:53 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.126 S126-B1/B3/J1/K1 (doc 20 §1, R-BRAIN-SKELETON) — 1.3.0 additive: families brain / skill / job; kinds brain.notebook (NB) · sheet.define (SO) · job.run (JB) · job.evidence (EV) · skill.define/revision/lesson/state (KN) · auto.define · common.instruction (lời dặn, learn index); learn value none (no vector, no graph — a ledger row is not knowledge); layers + ref_codes tables.",
     "_stamp_127": "[2026-10-21 11:04 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.127 S127-C3 — 1.4.0 additive: kind job.feedback (family job, layer job by prefix, no ref code of its own: it reads under its JB-).",
-    "_stamp_128": "[2026-10-22 04:41 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.128 S127-SK10 — 1.5.0 additive: kind skill.resource (family skill, layer skill by prefix, ref code KN)."
+    "_stamp_128": "[2026-10-22 04:41 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.128 S127-SK10 — 1.5.0 additive: kind skill.resource (family skill, layer skill by prefix, ref code KN).",
+    "_stamp_133": "[2026-10-24 05:42 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.133 S133-Ma (doc 81 §6) — 1.6.0 additive: per-kind `card_view` [{key, label, type: text|long_text|money|number|date|datetime|enum|person|list|link|count|items, enum?, currency_key?}] + `hide` (read by BizCity_Journal_Entry_Meta::card), family crm + kinds crm.digest / crm.lead, wider card_fields of job.evidence and mkt.post.output (evidence stamp).",
+    "_stamp_140": "[2026-10-25 09:49 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.140 S140-L7/L8 (doc 30 §2, doc 50 §2/§5, D140-18) — 1.7.0 additive: kind crm.deal (family crm; deal_ref · stage quote|order|contract|paid · amount · currency · party · source_doc · note); crm.lead also holds ONE customer (full_name · company · phone · email · note · source_doc · deal_ref); optional deal_ref ^(CN|TC|DH)-\\d{1,12}$ on fin.cash / fin.debt. Card values are cleaned by BizCity_Journal_Doc_Meta::clean_card (BizCity_Journal_Index::add).",
+    "_stamp_146": "[2026-10-28 07:25 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.146 S146-L7 (doc 20 §7, doc 90 §6) — 1.8.0 additive: kind broadcast.run (family job, layer job by_kind, learn none): one row per run of a \"Lịch thông báo\" (counts only — no recipient, no message text); written by the cell through journal.record, the machine ledger stays assistant_jobs."
 }

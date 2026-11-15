@@ -29,7 +29,7 @@
 # plugins/: chỉ các kênh đi kèm (CRM = repo riêng zalo-brain-crm)
 /plugins/*
 !/plugins/bizcity-zalo-personal/
-!/plugins/bizcity-zalo-bot/
+# [2026-11-15 08:40 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.152 S152-2.1 — bizcity-zalo-bot archived → plugins/_archived/bizcity-zalo-bot-20261115/ (no longer shipped).
 !/plugins/bizcity-facebook-bot/
 !/plugins/bizcity-chat-web/
 # Ở mọi độ sâu: không mã nguồn, thư viện tham khảo, tài liệu, test, chẩn đoán

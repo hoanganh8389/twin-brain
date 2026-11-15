@@ -1082,7 +1082,8 @@ $_bizcity_bundled_must_load = [
     // [2026-09-30 Claude Opus 5.5] CORE-REDUCTION WP-16 B-3b-G (R-LEAN-4, owner 2026-09-30) — bizgpt-tool-google is no longer a bundled plugin: the Google connection lives in
     // core/channel-gateway/integrations/google/ (loaded below the bundled loop); its tools are cut; folder → plugins/_archived/bizgpt-tool-google-20260930/.
     // 'bizcity-tool-facebook'       => 'BZTOOL_FB_VERSION',          // ARCHIVED 2026-05-24 → plugins/_archived/. Slug /tool-facebook/ now owned by core/channel-gateway (canonical /channel/).
-    'bizcity-zalo-bot'            => 'BIZCITY_ZALO_BOT_VERSION',   // Zalo Bot — CG channel sub-plugin
+    // [2026-11-15 08:40 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.152 S152-2.1 (Q152-3, owner: not used, channels go through the cell) — Zalo Bot (OA Bot API) archived → plugins/_archived/bizcity-zalo-bot-20261115/.
+    // 'bizcity-zalo-bot'            => 'BIZCITY_ZALO_BOT_VERSION',   // Zalo Bot — CG channel sub-plugin
     // [2026-06-10 Johnny Chu] PHASE-0.39 — Zalo Personal & OA Gateway (ZP.x probes, R-ZONE-2 isolation).
     'bizcity-zalo-personal'       => 'BIZCITY_ZALO_PERSONAL_VERSION', // Zalo Personal + OA channel via zca-bridge sidecar (PHASE-0.39)
     // 'bizcity-companion-notebook'  => 'BCN_VERSION',                // DISABLED — Companion Notebook (gitignored, không load mặc định)
@@ -1106,7 +1107,7 @@ $_bizcity_bundled_must_load = [
 // ordinary frontend HTML.
 $_bizcity_admin_only_slugs = [
     'bizcity-facebook-bot',     // FB Messenger webhook + admin
-    'bizcity-zalo-bot',         // Zalo Bot webhook + admin
+    // 'bizcity-zalo-bot',         // Zalo Bot webhook + admin — archived (PHASE-0.152 S152-2.1)
     // [2026-06-10 Johnny Chu] PHASE-0.39 — no public shortcodes; REST at /wp-json/bizcity-channel/v1/zalo-bridge/* covered by admin_ctx gate.
     'bizcity-zalo-personal',    // Zalo Personal + OA gateway — admin + /wp-json/ only
 ];

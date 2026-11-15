@@ -648,12 +648,7 @@ class BizCity_Channel_Core_REST {
 
 	private function log_mychannels_zalo_outbound( $user_id, $bot_id, array $target, array $link_status, $message, $result ) {
 		// [2026-07-21 Johnny Chu] PHASE-2-TWIN-GPT-CHANNEL-AUTOMATION — persist My Channels outbound messages so inbox refresh shows bot replies.
-		if ( ! class_exists( 'BizCity_Zalo_Bot_Database' ) ) {
-			$database_file = rtrim( BIZCITY_TWIN_AI_DIR, '/' ) . '/plugins/bizcity-zalo-bot/includes/class-database.php';
-			if ( is_readable( $database_file ) ) {
-				require_once $database_file;
-			}
-		}
+		// [2026-11-15 08:40 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.152 S152-2.2 (N1) — no hard-coded require into plugins/bizcity-zalo-bot (archived, Q152-3); absent class ⇒ nothing to log.
 		if ( ! class_exists( 'BizCity_Zalo_Bot_Database' ) ) {
 			return array();
 		}
