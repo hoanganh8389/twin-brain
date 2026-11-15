@@ -99,13 +99,7 @@ class BizCity_Gateway_Admin {
 		// Legacy channels with admin page links for management.
 		// Order: Zalo Bot OA → Zalo BizCity → Telegram → Facebook → others
 		$legacy_channels = [
-			'zalo_bot'  => [
-				'label'       => 'Zalo Bot OA',
-				'desc'        => 'Quản lý bot, webhook, gửi & nhận tin nhắn tự động qua Zalo OA',
-				'icon'        => '🤖',
-				'status'      => class_exists( 'BizCity_Zalo_Bot_Database' ),
-				'admin_page'  => 'bizchat-zalobot',
-			],
+			// [2026-11-15 08:40 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.152 S152-2.6 — 'zalo_bot' card removed: plugins/bizcity-zalo-bot archived (Q152-3), its admin page no longer exists.
 			// [2026-09-27 Claude Opus 5.5] CORE-REDUCTION WP-12 R8 — 'zalo' (Zalo BizCity Hotline) card removed; channel retired (R-ONE-AXIS D-29).
 			// [2026-09-27 Claude Opus 5.5] CORE-REDUCTION WP-12 R9 — 'telegram' admin-bot card removed (R-ONE-AXIS D-30); its status was always true via the shim.
 			'facebook'  => [

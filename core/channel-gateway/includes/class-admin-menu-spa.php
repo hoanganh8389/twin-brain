@@ -333,7 +333,7 @@ JS;
 			[ 'code' => 'cf7',            'label' => 'Contact Form 7',      'platform' => 'CF7',          'icon' => 'form',      'group' => 'web',       'zone' => 'customer', 'ready' => class_exists( 'WPCF7' ) || class_exists( 'WPCF7_ContactForm' ), 'desc' => 'Tự động đưa lead từ CF7 vào CRM Contacts.' ],
 			// [2026-06-12 Johnny Chu] HOTFIX — adminchat removed from catalog (internal-only, no user-facing tile).
 			// ── ZONE 2 — Kênh Quản Trị ──────────────────────────────────────────────
-			[ 'code' => 'zalo_bot',       'label' => 'Zalo Bot',            'platform' => 'ZALO_BOT',     'icon' => 'zalo',      'group' => 'admin',     'zone' => 'admin',    'ready' => $has( 'zalo_bot' ),                          'desc' => 'Bot Zalo — admin/NV giao việc cho AI, automation chạy nền.' ],
+			// [2026-11-15 08:40 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.152 S152-2.6 — 'zalo_bot' tile removed: plugins/bizcity-zalo-bot archived (Q152-3); the menu no longer shows a dead "Zalo Bot" item.
 			// [2026-09-27 Claude Opus 5.5] CORE-REDUCTION WP-12 R8 — 'zalo_hotline' (Zalo Hotline PA) tile removed; channel retired (R-ONE-AXIS D-29).
 			// [2026-09-27 Claude Opus 5.5] CORE-REDUCTION WP-12 R9 — 'telegram' admin-bot tile removed (R-ONE-AXIS D-30); its 'ready' was always true via the shim.
 			// ── Tools (shared) ───────────────────────────────────────────────────────
