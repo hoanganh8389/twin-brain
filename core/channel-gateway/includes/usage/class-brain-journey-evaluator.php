@@ -342,10 +342,9 @@ final class BizCity_Brain_Journey_Evaluator {
 	}
 
 	private static function save_metrics( string $account_id, array $m ): void {
-		global $wpdb;
-		$table = BizCity_Brain_Journey_Schema::metrics_table();
-		$wpdb->replace( $table, array(
-			'account_id'             => $account_id,
+		// [2026-11-17 11:20 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 S154-1.3 — the cache row is a ledger row kind='metric' (one per account,
+		// REPLACE on its fixed seq); bizcity_brain_metrics is quarantined. computed_at = the row's received_at.
+		BizCity_Brain_Journey_Schema::put_cache_row( 'metric', $account_id, BizCity_Brain_Journey_Schema::METRIC_SEQ, array(
 			'platform'               => $m['platform'],
 			'owner_user_id'          => $m['owner_user_id'],
 			'customer_replies'       => $m['customer_replies'],
@@ -363,8 +362,7 @@ final class BizCity_Brain_Journey_Evaluator {
 			'last_customer_reply_at' => $m['last_customer_reply_at'],
 			'born_at'                => $m['born_at'],
 			'active'                 => $m['active'],
-			'computed_at'            => self::now_mysql(),
-		) );
+		), BizCity_Brain_Journey_Schema::METRIC_COLS );
 	}
 
 	/* ================================================================
@@ -377,32 +375,40 @@ final class BizCity_Brain_Journey_Evaluator {
 	public static function write_event( array $row ): bool {
 		global $wpdb;
 		$journey = BizCity_Brain_Journey_Schema::journey_table();
-		$heads   = BizCity_Brain_Journey_Schema::heads_table();
 		$dedupe  = $row['subject_kind'] . ':' . $row['subject_id'] . ':' . $row['event'] . ':' . $row['code'];
 
 		if ( (int) $wpdb->get_var( $wpdb->prepare( "SELECT 1 FROM {$journey} WHERE dedupe_key = %s", $dedupe ) ) === 1 ) {
 			return false; // already recorded — luật 2, never re-written, and T108-5 needs this to be a safe no-op.
 		}
 
-		// Guarantee a lockable heads row exists before the transaction (first writer for a brand-new subject).
-		$wpdb->query( $wpdb->prepare(
-			"INSERT IGNORE INTO {$heads} (subject_kind, subject_id, last_seq, last_hash, updated_at) VALUES (%s, %s, 0, '', %s)",
-			$row['subject_kind'], $row['subject_id'], self::now_mysql()
-		) );
-
-		$wpdb->query( 'START TRANSACTION' );
-		$dup = $wpdb->get_var( $wpdb->prepare( "SELECT 1 FROM {$journey} WHERE dedupe_key = %s FOR UPDATE", $dedupe ) );
-		if ( $dup ) {
-			$wpdb->query( 'COMMIT' );
+		// [2026-11-17 11:20 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 S154-1.2 — no heads table: the chain head is the subject's last journey
+		// row (UNIQUE subject_kind, subject_id, seq). Writers of one subject are serialised by a named lock: per blog (GET_LOCK is server-wide)
+		// and hashed so the name stays under 64 chars. No lock within 5 s ⇒ skip this run (the next evaluator run writes it; nothing lost).
+		$blog = function_exists( 'get_current_blog_id' ) ? (int) get_current_blog_id() : 0;
+		$lock = 'bzj' . $blog . ':' . md5( $row['subject_kind'] . ':' . $row['subject_id'] );
+		if ( 1 !== (int) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 5)', $lock ) ) ) {
 			return false;
 		}
-		$head = $wpdb->get_row( $wpdb->prepare(
-			"SELECT last_seq, last_hash FROM {$heads} WHERE subject_kind = %s AND subject_id = %s FOR UPDATE",
-			$row['subject_kind'], $row['subject_id']
-		), ARRAY_A );
-		$prev_seq  = $head ? (int) $head['last_seq'] : 0;
-		$prev_hash = $head ? (string) $head['last_hash'] : '';
-		$seq       = $prev_seq + 1;
+		try {
+			if ( (int) $wpdb->get_var( $wpdb->prepare( "SELECT 1 FROM {$journey} WHERE dedupe_key = %s", $dedupe ) ) === 1 ) {
+				return false; // written by the writer that held the lock before us
+			}
+			$head = $wpdb->get_row( $wpdb->prepare(
+				"SELECT seq, row_hash FROM {$journey} WHERE subject_kind = %s AND subject_id = %s ORDER BY seq DESC LIMIT 1",
+				$row['subject_kind'], $row['subject_id']
+			), ARRAY_A );
+			$prev_seq  = $head ? (int) $head['seq'] : 0;
+			$prev_hash = $head ? (string) $head['row_hash'] : '';
+			$seq       = $prev_seq + 1;
+			return self::insert_event( $journey, $row, $dedupe, $seq, $prev_hash );
+		} finally {
+			$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock ) );
+		}
+	}
+
+	/** One chained journey row (called under the subject's lock). */
+	private static function insert_event( string $journey, array $row, string $dedupe, int $seq, string $prev_hash ): bool {
+		global $wpdb;
 
 		$canonical = wp_json_encode( array(
 			'seq' => $seq, 'subject_kind' => $row['subject_kind'], 'subject_id' => $row['subject_id'],
@@ -411,7 +417,8 @@ final class BizCity_Brain_Journey_Evaluator {
 		) );
 		$row_hash = hash( 'sha256', $prev_hash . $canonical );
 
-		$ok = $wpdb->insert( $journey, array(
+		// [2026-11-17 02:20 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W3 — one ledger row kind 'journey'; true only if this call took the (subject, seq) slot.
+		return BizCity_Brain_Journey_Schema::put_journey_row( array(
 			'seq'             => $seq,
 			'occurred_at'     => $row['occurred_at'],
 			'subject_kind'    => $row['subject_kind'],
@@ -429,18 +436,7 @@ final class BizCity_Brain_Journey_Evaluator {
 			'row_hash'        => $row_hash,
 			'created_at'      => self::now_mysql(),
 		) );
-		if ( false === $ok ) {
-			$wpdb->query( 'ROLLBACK' );
-			return false;
-		}
-		if ( $head ) {
-			$wpdb->update( $heads, array( 'last_seq' => $seq, 'last_hash' => $row_hash, 'updated_at' => self::now_mysql() ),
-				array( 'subject_kind' => $row['subject_kind'], 'subject_id' => $row['subject_id'] ) );
-		} else {
-			$wpdb->insert( $heads, array( 'subject_kind' => $row['subject_kind'], 'subject_id' => $row['subject_id'], 'last_seq' => $seq, 'last_hash' => $row_hash, 'updated_at' => self::now_mysql() ) );
-		}
-		$wpdb->query( 'COMMIT' );
-		return true;
+		// (dedupe is checked under the subject lock in write_event; the (subject, seq) slot is the old UNIQUE)
 	}
 
 	/** Re-walk one subject's chain and confirm every row_hash matches (T108-5). */

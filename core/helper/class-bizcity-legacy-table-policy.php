@@ -125,6 +125,15 @@ final class BizCity_Legacy_Table_Policy {
 		'bizcity_knowledge_chunks', 'bizcity_mcp_context_packs', 'bizcity_usage_daily',
 		// [2026-10-25 09:40 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.139 R126-TB (owner "gộp 3 bảng làm 1 sổ cái") — activity_day rows are ledger rows kind='day'; the old table is read once by BizCity_Usage_Schema::merge_legacy_activity(), never written.
 		'bizcity_activity_day',
+		// [2026-11-17 11:20 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W1 (D154-2) — one ledger: chain heads come from the last journey row; metrics / period
+		// are cache rows of bizcity_usage_ledger (kind metric / period). Not created on a new install, never read or written; rows stay until the owner approves a DROP.
+		'bizcity_brain_journey_heads', 'bizcity_brain_metrics', 'bizcity_brain_metrics_period',
+		// [2026-11-17 12:30 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2 — each plan sale is one ledger row kind 'sale'; the old table is read once by the cron copy, never written.
+		'bizcity_plan_sales',
+		// [2026-11-17 01:10 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2c-1 — each number's plan is one ledger row kind 'plan'; the old table is read by the cron copy and, until it is done, as the view fallback; never written.
+		'bizcity_account_plans',
+		// [2026-11-17 02:20 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W3 — the journey is ledger rows kind 'journey' (hash chain kept byte for byte, verified after the copy); read by the cron copy and, until done, as the view fallback; never written.
+		'bizcity_brain_journey',
 		// [2026-10-25 Johnny Chu - Chu Hoàng Anh] PHASE-0.126 R126-RT — the PHP turn trace tables (BizCity_Trace_Store + its NO-OP projector archived): no reader or writer left; rows stay.
 		'bizcity_traces',
 		'bizcity_trace_tasks',
@@ -218,6 +227,11 @@ final class BizCity_Legacy_Table_Policy {
 		'bizcity_knowledge_chunks', 'bizcity_mcp_context_packs', 'bizcity_usage_daily',
 		// [2026-10-25 09:40 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.139 R126-TB (owner "gộp 3 bảng làm 1 sổ cái") — activity_day rows are ledger rows kind='day'; the old table is read once by BizCity_Usage_Schema::merge_legacy_activity(), never written.
 		'bizcity_activity_day',
+		// [2026-11-17 11:20 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W1 (D154-2) — refuse SQL writes (see the quarantine list).
+		'bizcity_brain_journey_heads', 'bizcity_brain_metrics', 'bizcity_brain_metrics_period',
+		'bizcity_plan_sales', // [2026-11-17 12:30 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2
+		'bizcity_account_plans', // [2026-11-17 01:10 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2c-1
+		'bizcity_brain_journey', // [2026-11-17 02:20 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W3
 		// [2026-08-29 Johnny Chu] PHASE-1.30-MEMORY-WRITER-STOP — filestore-first memory owners now refuse legacy SQL writes while retaining bounded read fallback.
 		// [2026-09-25 Claude Opus 5.5] CORE-REDUCTION WP-11 C3b — their writers (Engine, One_Shot, pipeline evidence, todos) are
 		// retired and no reader outside core/intent remains (D-26): refuse install/writes, keep reads until the drop gates.

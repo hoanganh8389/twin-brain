@@ -90,6 +90,11 @@ final class BizCity_Usage_Ops_Day {
 		if ( 0 !== strpos( (string) ( $body['contract'] ?? '' ), self::CONTRACT ) || ( $body['audience'] ?? '' ) !== 'owner' || '' === $account || ! self::valid_day( $date ) || ! isset( $body['counts'] ) || ! is_array( $body['counts'] ) ) {
 			return new WP_REST_Response( array( 'ok' => false, 'code' => 'invalid_param', 'message' => 'contract ops-day@1, audience owner, account_id, date (YYYY-MM-DD) and counts are required.' ), 400 );
 		}
+		// [2026-11-17 10:24 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 S154-P.1 (C-G2) — the authenticated number must own the owner copy (same rule as usage-ledger@1).
+		$allowed = class_exists( 'BizCity_Usage_Ingest' ) ? BizCity_Usage_Ingest::account_allowed( $account, $auth ) : ( $account === $auth );
+		if ( ! $allowed ) {
+			return class_exists( 'BizCity_Usage_Ingest' ) ? BizCity_Usage_Ingest::account_mismatch_response( self::CONTRACT ) : new WP_REST_Response( array( 'ok' => false, 'code' => 'account_mismatch' ), 403 );
+		}
 		$bad = self::forbidden_path( $body );
 		if ( null !== $bad ) {
 			return new WP_REST_Response( array( 'ok' => false, 'code' => 'forbidden_key', 'message' => 'ops-day@1 owner copy carries counts only (no token, money or level): ' . $bad ), 400 );

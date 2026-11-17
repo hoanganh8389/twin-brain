@@ -119,9 +119,13 @@ final class BizCity_Brain_Period_Metrics {
 			call_user_func( self::$readers['save'], $row );
 			return;
 		}
-		global $wpdb;
-		$row['computed_at'] = current_time( 'mysql', true );
-		$wpdb->replace( BizCity_Brain_Journey_Schema::period_table(), $row );
+		// [2026-11-17 11:20 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 S154-1.4 — a ledger row kind='period', one per (account, range) on a
+		// fixed seq; bizcity_brain_metrics_period is quarantined. An unknown range is refused (its seq would collide).
+		$range = (string) ( $row['range_key'] ?? '' );
+		if ( ! isset( BizCity_Brain_Journey_Schema::PERIOD_CODE[ $range ] ) ) {
+			return;
+		}
+		BizCity_Brain_Journey_Schema::put_cache_row( 'period', (string) ( $row['account_id'] ?? '' ), BizCity_Brain_Journey_Schema::period_seq( $range ), $row, BizCity_Brain_Journey_Schema::PERIOD_COLS );
 	}
 
 	/**

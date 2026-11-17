@@ -51,7 +51,9 @@ class BizCity_Usage_Proxy_REST {
     public static function register_routes() {
         $ns = defined( 'BIZCITY_TWINCHAT_REST_NS' ) ? BIZCITY_TWINCHAT_REST_NS : self::NS;
 
-        $auth = array( __CLASS__, 'check_logged_in' );
+        // [2026-11-17 10:24 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 S154-P.2 (C-G7) — usage logs and the API-key list are the site's Hub account:
+        // site admins only (was: any logged-in user, customers included). master-plan stays logged-in (Twin shell reads it; no logs, no keys).
+        $auth = array( __CLASS__, 'check_site_admin' );
 
         // Analytics endpoints (GET)
         $analytics = array(
@@ -81,8 +83,17 @@ class BizCity_Usage_Proxy_REST {
         register_rest_route( $ns, '/account/master-plan', array(
             'methods'             => 'GET',
             'callback'            => array( __CLASS__, 'handle_master_plan' ),
-            'permission_callback' => $auth,
+            'permission_callback' => array( __CLASS__, 'check_logged_in' ),
         ) );
+    }
+
+    /** [2026-11-17 10:24 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 S154-P.2 (C-G7) — network/site admin (same gate as the rest of the gateway admin). */
+    public static function check_site_admin() {
+        if ( ! is_user_logged_in() ) {
+            return new WP_Error( 'rest_forbidden', 'Login required.', array( 'status' => 401 ) );
+        }
+        $ok = class_exists( 'BizCity_Network_Admin_Capability' ) ? BizCity_Network_Admin_Capability::can_manage() : current_user_can( 'manage_options' );
+        return $ok ? true : new WP_Error( 'rest_forbidden', 'Only a site administrator can read the site\'s usage and keys.', array( 'status' => 403 ) );
     }
 
     public static function check_logged_in() {
@@ -195,7 +206,9 @@ class BizCity_Usage_Proxy_REST {
                 200
             );
         }
-        $result = $client->gateway_get( $path, $query );
+        // [2026-11-17 10:24 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 S154-P.2 (C-G8) — usage logs and keys belong to THIS site's key only:
+        // no main-site fallback (a sub-site without its own key must not show the main site's account).
+        $result = $client->gateway_get( $path, $query, 'GET', 10, false );
         return new WP_REST_Response( $result, 200 );
     }
 

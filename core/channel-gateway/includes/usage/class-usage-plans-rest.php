@@ -180,8 +180,8 @@ final class BizCity_Usage_Plans_REST {
 		$tz    = self::tz();
 		list( $where, $args ) = self::filters( $request );
 		$acc   = self::accounts_table();
-		$plans = BizCity_Usage_Schema::plans_table();
-		$from  = "FROM {$acc} a LEFT JOIN {$plans} p ON p.platform = 'zalo_personal' AND p.account_id = a.bridge_account_id WHERE a.kind = 'personal' {$where}";
+		$plans = BizCity_Usage_Schema::plans_view_as( 'p' ); // [2026-11-17 01:10 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2c-1 — derived table aliased `p` (no second alias below)
+		$from  = "FROM {$acc} a LEFT JOIN {$plans} ON p.platform = 'zalo_personal' AND p.account_id = a.bridge_account_id WHERE a.kind = 'personal' {$where}";
 		$total = self::rows( "SELECT COUNT(*) AS n {$from}", $args );
 		$offset = ( $page - 1 ) * $per;
 		$rows  = self::rows(
@@ -220,12 +220,12 @@ final class BizCity_Usage_Plans_REST {
 			return new WP_REST_Response( array( 'ok' => false, 'code' => 'invalid_param' ), 400 );
 		}
 		$acc   = self::accounts_table();
-		$plans = BizCity_Usage_Schema::plans_table();
+		$plans = BizCity_Usage_Schema::plans_view_as( 'p' ); // [2026-11-17 01:10 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2c-1 — derived table aliased `p` (no second alias below)
 		$rows  = self::rows(
 			"SELECT a.bridge_account_id AS account_id, a.label, a.account_name, a.owner_user_id, a.status AS acc_status, a.zalo_uid,
 				p.plan_code, p.state, p.plan_mode, p.plan_version, p.started_at, p.valid_until, p.monthly_token_allowance, p.allowance_period,
 				p.notice_text, p.ai_off_by_plan, p.ai_off_at, p.enforce_error
-			FROM {$acc} a LEFT JOIN {$plans} p ON p.platform = 'zalo_personal' AND p.account_id = a.bridge_account_id
+			FROM {$acc} a LEFT JOIN {$plans} ON p.platform = 'zalo_personal' AND p.account_id = a.bridge_account_id
 			WHERE a.kind = 'personal' AND a.bridge_account_id = %s LIMIT 1",
 			array( $id )
 		);
@@ -514,6 +514,8 @@ final class BizCity_Usage_Plans_REST {
 				return 'ai_on';
 			case 'human_off':
 				return 'human_off';
+			case 'hub_off': // [2026-11-17 01:50 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2c-2 — the Hub refused to switch it back on (was falling to 'ok' = "still running")
+				return 'hub_off';
 			case 'error':
 				return 'error:' . ( $e['error'] ?? 'unknown' );
 		}

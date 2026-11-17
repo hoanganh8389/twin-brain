@@ -75,6 +75,12 @@ final class BizCity_Usage_Activity_Day {
 		if ( 0 !== strpos( (string) ( $body['contract'] ?? '' ), self::CONTRACT ) || '' === $account || ! self::valid_day( $day ) || ! isset( $body['events'] ) || ! is_array( $body['events'] ) ) {
 			return new WP_REST_Response( array( 'ok' => false, 'code' => 'invalid_param', 'message' => 'contract, account_id, day (YYYY-MM-DD) and events are required.' ), 400 );
 		}
+		// [2026-11-17 10:24 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 S154-P.1 (C-G2) — the authenticated number must own the day row (same rule as usage-ledger@1).
+		$allowed = class_exists( 'BizCity_Usage_Ingest' ) ? BizCity_Usage_Ingest::account_allowed( $account, $auth ) : ( $account === $auth );
+		if ( ! $allowed ) {
+			self::log( 'activity-day@1 refused: account mismatch.', array( 'account_id' => $account ) );
+			return class_exists( 'BizCity_Usage_Ingest' ) ? BizCity_Usage_Ingest::account_mismatch_response( self::CONTRACT ) : new WP_REST_Response( array( 'ok' => false, 'code' => 'account_mismatch' ), 403 );
+		}
 		$bad = self::forbidden_path( $body );
 		if ( null !== $bad ) {
 			self::log( 'activity-day@1 refused: forbidden key.', array( 'account_id' => $account, 'path' => $bad ) );

@@ -99,7 +99,20 @@ final class BizCity_Usage_Plan_Woo {
 		if ( isset( self::$readers['acquire_lock'] ) ) {
 			return (bool) call_user_func( self::$readers['acquire_lock'], $order_id );
 		}
-		return (bool) add_option( self::LOCK_OPTION_PREFIX . $order_id, time(), '', 'no' );
+		// [2026-11-17 10:24 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 S154-P.3 (C-G1) — add_option() runs INSERT … ON DUPLICATE KEY UPDATE, so a second
+		// concurrent request in a later second also got `true` and could extend the same paid order twice. INSERT IGNORE on the UNIQUE
+		// option_name is the atomic claim: exactly one request sees rows_affected = 1.
+		global $wpdb;
+		if ( ! isset( $wpdb ) || ! is_object( $wpdb ) || ! method_exists( $wpdb, 'query' ) ) {
+			return false; // fail closed: no proof we own the claim ⇒ do not extend
+		}
+		$name = self::LOCK_OPTION_PREFIX . $order_id;
+		$rows = $wpdb->query( $wpdb->prepare( "INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')", $name, (string) time() ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		if ( function_exists( 'wp_cache_delete' ) ) {
+			wp_cache_delete( $name, 'options' ); // the row was written behind the options API
+			wp_cache_delete( 'notoptions', 'options' );
+		}
+		return 1 === (int) $rows;
 	}
 
 	private static function release_lock( int $order_id ): void {

@@ -400,32 +400,20 @@ final class BizCity_Usage_Plans {
 		if ( isset( self::$readers['save'] ) ) {
 			return call_user_func( self::$readers['save'], $row );
 		}
-		global $wpdb;
-		$t   = self::table();
+		// [2026-11-17 01:10 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2c-1 — the plan is one ledger row kind 'plan' (REPLACE on its fixed seq = the old
+		// upsert of every column). created_at keeps the first value: the caller passes the row it read (get() returns created_at), else the existing one.
 		$now = self::fmt( self::now() );
 		$row['updated_at'] = $now;
-		$row['created_at'] = $row['created_at'] ?? $now;
+		if ( empty( $row['created_at'] ) ) {
+			$prev              = self::get( (string) ( $row['platform'] ?? '' ), (string) ( $row['account_id'] ?? '' ) );
+			$row['created_at'] = is_array( $prev ) && ! empty( $prev['created_at'] ) ? (string) $prev['created_at'] : $now;
+		}
 		unset( $row['id'] );
-		$cols = array_keys( $row );
-		$vals = array();
-		$mark = array();
-		foreach ( $row as $v ) {
-			if ( null === $v ) {
-				$mark[] = 'NULL';
-				continue;
-			}
-			$mark[] = is_int( $v ) ? '%d' : '%s';
-			$vals[] = $v;
+		if ( ! class_exists( 'BizCity_Usage_Schema' ) || 0 === BizCity_Usage_Schema::plan_seq( (string) ( $row['platform'] ?? '' ) ) ) {
+			return new WP_Error( 'invalid_platform', 'Không lưu được gói: nền tảng không hợp lệ.', array( 'hint' => 'Chọn lại số Zalo rồi lưu.' ) );
 		}
-		$upd = array();
-		foreach ( $cols as $c ) {
-			if ( ! in_array( $c, array( 'platform', 'account_id', 'created_at' ), true ) ) {
-				$upd[] = "`{$c}` = VALUES(`{$c}`)";
-			}
-		}
-		$sql = "INSERT INTO {$t} (`" . implode( '`,`', $cols ) . '`) VALUES (' . implode( ',', $mark ) . ') ON DUPLICATE KEY UPDATE ' . implode( ',', $upd );
-		if ( false === $wpdb->query( $wpdb->prepare( $sql, $vals ) ) ) { // phpcs:ignore WordPress.DB.PreparedSQL
-			return new WP_Error( 'db_error', 'Không lưu được gói.' );
+		if ( ! BizCity_Usage_Schema::put_plan_row( $row ) ) {
+			return new WP_Error( 'db_error', 'Không lưu được gói.', array( 'hint' => 'Thử lại sau ít phút.' ) );
 		}
 		return self::get( $row['platform'], $row['account_id'] ) ?? $row;
 	}

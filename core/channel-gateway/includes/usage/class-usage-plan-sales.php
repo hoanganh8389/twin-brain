@@ -39,64 +39,119 @@ final class BizCity_Usage_Plan_Sales {
 		}
 		self::$initialized = true;
 		add_action( 'admin_init', array( __CLASS__, 'maybe_install' ) );
+		add_action( self::COPY_HOOK, array( __CLASS__, 'copy_legacy' ) ); // PHASE-0.154 W2 — one-time paged copy of the old table
 		add_action( 'bizcity_usage_plan_applied', array( __CLASS__, 'on_applied' ), 10, 3 );
 		add_action( 'woocommerce_order_status_refunded', array( __CLASS__, 'on_refunded' ), 20, 1 );
 	}
 
+	/*
+	 * [2026-11-17 12:30 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2 (D154-1/2, §9) — storage: one row of the ONE ledger per order (kind 'sale',
+	 * account_id '_sale', account_seq 4.2e18 + order_id, the number in the payload, key_id = this site's key). bizcity_plan_sales is quarantined:
+	 * not created on a new install, read once by copy_legacy(), never written. table() is a derived table with the old columns, so the revenue
+	 * screens keep their SQL. Fixes on the way: G9 (a sale arriving before any admin visit was lost: the ledger always exists), G3 (an order
+	 * re-recorded under another number stays ONE row).
+	 */
+	const SALE_COLS = array(
+		'order_id' => 'i', 'account_id' => 'p', 'package_code' => 'p', 'months' => 'i', 'allowance' => 'i', 'amount_vnd' => 'i', 'floor_vnd' => 'i',
+		'floor_version' => 'p', 'channel' => 'p', 'created_by' => 'i', 'payer_user_id' => 'i', 'status' => 'p', 'valid_until' => 'p', 'paid_at' => 'p',
+		'applied_at' => 'p', 'refunded_at' => 'p', 'method' => 'p', 'bank_amount_vnd' => 'i', 'bank_ref' => 'p', 'created_at' => 'p',
+	);
+	/** Keys a re-record of the same order overwrites (the old ON DUPLICATE KEY UPDATE list); everything else keeps its first value. */
+	const UPDATE_KEYS = array( 'account_id', 'package_code', 'months', 'allowance', 'amount_vnd', 'valid_until', 'applied_at' );
+	const COPY_DONE   = 'bizcity_plan_sales_copied_v1';
+	const COPY_OFFSET = 'bizcity_plan_sales_copy_offset';
+	const COPY_HOOK   = 'bizcity_usage_sales_copy';
+	const COPY_PAGE   = 500;
+
 	public static function table(): string {
+		// [2026-11-17 01:10 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2 — while the one-time copy is not done, the revenue screens also read the old
+		// sales not yet in the ledger (shared BizCity_Usage_Schema::kind_view_with_legacy); after the copy: the ledger only.
+		$seq0 = (int) BizCity_Usage_Schema::SALE_SEQ;
+		return BizCity_Usage_Schema::kind_view_with_legacy( 'sale', array( 'id', 'platform' ), self::SALE_COLS, 'bizcity_plan_sales_v', self::physical_table(), self::COPY_DONE,
+			"l.account_id = '" . BizCity_Usage_Schema::SALE_ACCOUNT . "' AND l.account_seq = {$seq0} + o.order_id" );
+	}
+
+	/** The quarantined physical table (read once by copy_legacy(); never written). */
+	public static function physical_table(): string {
 		global $wpdb;
 		return $wpdb->prefix . 'bizcity_plan_sales';
 	}
 
+	public static function seq( int $order_id ): int {
+		return BizCity_Usage_Schema::SALE_SEQ + max( 0, $order_id );
+	}
+
+	/** The ledger is the storage: ready as soon as the usage schema is (no table of our own to wait for). */
 	public static function installed(): bool {
 		if ( isset( self::$readers['installed'] ) ) {
 			return (bool) call_user_func( self::$readers['installed'] );
 		}
-		return function_exists( 'get_option' ) && (string) get_option( self::OPTION_VERSION, '' ) === self::SCHEMA_VERSION;
+		return class_exists( 'BizCity_Usage_Schema' ) && BizCity_Usage_Schema::installed();
 	}
 
-	/** Idempotent; cheap when the option already matches. */
+	/** admin_init / revenue REST: no DDL any more (D154-2); queue the one-time copy of the old rows while it is not done. */
 	public static function maybe_install(): void {
-		if ( self::installed() ) {
+		if ( ( defined( 'BIZCITY_DIAGNOSTICS_CLI' ) && BIZCITY_DIAGNOSTICS_CLI ) || ! function_exists( 'get_option' ) || '1' === (string) get_option( self::COPY_DONE, '' ) ) {
 			return;
 		}
-		if ( ! defined( 'ABSPATH' ) || ! is_file( ABSPATH . 'wp-admin/includes/upgrade.php' ) ) {
+		if ( function_exists( 'wp_next_scheduled' ) && ! wp_next_scheduled( self::COPY_HOOK ) ) {
+			wp_schedule_single_event( time() + 60, self::COPY_HOOK );
+		}
+	}
+
+	/**
+	 * Cron: copy the old bizcity_plan_sales rows into the ledger, 500 a page (INSERT IGNORE: a sale already written to the ledger after the deploy
+	 * keeps its newer state). Done only when no old order is missing from the ledger; the VND difference over the copied orders is noted as evidence.
+	 */
+	public static function copy_legacy(): void {
+		if ( ( defined( 'BIZCITY_DIAGNOSTICS_CLI' ) && BIZCITY_DIAGNOSTICS_CLI ) || '1' === (string) get_option( self::COPY_DONE, '' ) ) {
 			return;
 		}
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-		global $wpdb;
-		$charset = function_exists( 'bizcity_get_charset_collate' ) ? bizcity_get_charset_collate() : $wpdb->get_charset_collate();
-		$t       = self::table();
-		dbDelta( "CREATE TABLE {$t} (
-			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-			order_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
-			platform VARCHAR(24) NOT NULL DEFAULT 'zalo_personal',
-			account_id VARCHAR(64) NOT NULL DEFAULT '',
-			package_code VARCHAR(16) NOT NULL DEFAULT '',
-			months TINYINT UNSIGNED NOT NULL DEFAULT 1,
-			allowance BIGINT UNSIGNED NOT NULL DEFAULT 0,
-			amount_vnd BIGINT UNSIGNED NOT NULL DEFAULT 0,
-			floor_vnd BIGINT UNSIGNED NOT NULL DEFAULT 0,
-			floor_version VARCHAR(40) NOT NULL DEFAULT '',
-			channel VARCHAR(8) NOT NULL DEFAULT '',
-			created_by BIGINT UNSIGNED NOT NULL DEFAULT 0,
-			payer_user_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
-			status VARCHAR(12) NOT NULL DEFAULT 'paid',
-			valid_until DATETIME NULL,
-			paid_at DATETIME NOT NULL,
-			applied_at DATETIME NOT NULL,
-			refunded_at DATETIME NULL,
-			method VARCHAR(24) NOT NULL DEFAULT '',
-			bank_amount_vnd BIGINT UNSIGNED NOT NULL DEFAULT 0,
-			bank_ref VARCHAR(64) NOT NULL DEFAULT '',
-			created_at DATETIME NOT NULL,
-			PRIMARY KEY  (id),
-			UNIQUE KEY uniq_order (order_id),
-			KEY idx_account_paid (account_id, paid_at),
-			KEY idx_paid (paid_at),
-			KEY idx_status (status)
-		) {$charset};" );
-		update_option( self::OPTION_VERSION, self::SCHEMA_VERSION, false );
+		$old = self::physical_table();
+		if ( ! class_exists( 'BizCity_Table_Metadata' ) || ! BizCity_Table_Metadata::table_exists( $old ) ) {
+			update_option( self::COPY_DONE, '1', false );
+			self::copy_note( 'done_no_table', 0, 0 );
+			return;
+		}
+		$offset = max( 0, (int) get_option( self::COPY_OFFSET, 0 ) );
+		for ( $page = 0; $page < 20; $page++ ) {
+			$rows = self::rows( "SELECT * FROM {$old} ORDER BY id LIMIT %d OFFSET %d", array( self::COPY_PAGE, $offset ) );
+			foreach ( $rows as $r ) {
+				$ok = BizCity_Usage_Schema::put_kind_row( 'sale', BizCity_Usage_Schema::SALE_ACCOUNT, self::seq( (int) $r['order_id'] ), (string) ( $r['platform'] ?? '' ),
+					(int) ( $r['payer_user_id'] ?? 0 ), BizCity_Usage_Schema::kind_payload( $r, self::SALE_COLS ), 'ignore', (string) ( $r['paid_at'] ?? '' ) );
+				if ( ! $ok ) {
+					update_option( self::COPY_OFFSET, $offset, false );
+					self::copy_note( 'insert_failed', $offset, 0 );
+					wp_schedule_single_event( time() + 300, self::COPY_HOOK );
+					return;
+				}
+			}
+			$offset += count( $rows );
+			update_option( self::COPY_OFFSET, $offset, false );
+			if ( count( $rows ) < self::COPY_PAGE ) {
+				$led     = BizCity_Usage_Schema::ledger_physical_table();
+				$seq0    = BizCity_Usage_Schema::SALE_SEQ;
+				$missing = self::rows( "SELECT COUNT(*) AS n FROM {$old} o LEFT JOIN {$led} l ON l.account_id = %s AND l.account_seq = %d + o.order_id WHERE l.id IS NULL", array( BizCity_Usage_Schema::SALE_ACCOUNT, $seq0 ) );
+				$diff    = self::rows( "SELECT COALESCE(SUM(o.amount_vnd),0) - COALESCE(SUM(CAST(JSON_EXTRACT(l.payload, '$.amount_vnd') AS SIGNED)),0) AS d FROM {$old} o JOIN {$led} l ON l.account_id = %s AND l.account_seq = %d + o.order_id", array( BizCity_Usage_Schema::SALE_ACCOUNT, $seq0 ) );
+				$n       = (int) ( $missing[0]['n'] ?? -1 );
+				if ( 0 === $n ) {
+					update_option( self::COPY_DONE, '1', false );
+					self::copy_note( 'done', $offset, (int) ( $diff[0]['d'] ?? 0 ) ); // vnd_diff ≠ 0 only when an order was re-recorded after the deploy
+				} else {
+					update_option( self::COPY_OFFSET, 0, false );
+					self::copy_note( 'missing_after_pass', $offset, $n );
+					wp_schedule_single_event( time() + 300, self::COPY_HOOK );
+				}
+				return;
+			}
+		}
+		wp_schedule_single_event( time() + 60, self::COPY_HOOK );
+	}
+
+	private static function copy_note( string $state, int $offset, int $n ): void {
+		if ( class_exists( 'BizCity_Cron_Manager' ) && method_exists( 'BizCity_Cron_Manager', 'instance' ) ) {
+			BizCity_Cron_Manager::instance()->note_event( 'usage_sales_copy', array( 'state' => $state, 'offset' => $offset, 'n' => $n ) );
+		}
 	}
 
 	public static function enabled(): bool {
@@ -164,24 +219,37 @@ final class BizCity_Usage_Plan_Sales {
 
 	/** Idempotent on order_id (re-running the same order updates the same row). */
 	public static function record( array $row ): bool {
-		$cols = array( 'order_id', 'platform', 'account_id', 'package_code', 'months', 'allowance', 'amount_vnd', 'floor_vnd', 'floor_version', 'channel', 'created_by', 'payer_user_id', 'status', 'valid_until', 'paid_at', 'applied_at', 'method', 'bank_amount_vnd', 'bank_ref', 'created_at' );
-		$ph   = array();
-		$args = array();
-		foreach ( $cols as $c ) {
-			$v = $row[ $c ] ?? null;
-			if ( null === $v ) {
-				$ph[] = 'NULL';
-			} elseif ( is_int( $v ) ) {
-				$ph[]   = '%d';
-				$args[] = $v;
-			} else {
-				$ph[]   = '%s';
-				$args[] = (string) $v;
+		// [2026-11-17 12:30 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2 — one ledger row per order. A re-record keeps the first values (paid_at,
+		// method, payer…) and overwrites only UPDATE_KEYS, like the old ON DUPLICATE list; the SQL keeps a refund that landed meanwhile.
+		$order = (int) ( $row['order_id'] ?? 0 );
+		if ( $order <= 0 || ! class_exists( 'BizCity_Usage_Schema' ) ) {
+			return false;
+		}
+		$led    = BizCity_Usage_Schema::ledger_physical_table();
+		$seq    = self::seq( $order );
+		$merged = $row;
+		$prev   = self::rows( "SELECT payload FROM {$led} WHERE account_id = %s AND account_seq = %d", array( BizCity_Usage_Schema::SALE_ACCOUNT, $seq ) );
+		$old    = isset( $prev[0]['payload'] ) ? json_decode( (string) $prev[0]['payload'], true ) : null;
+		if ( is_array( $old ) ) {
+			$merged = $old;
+			foreach ( self::UPDATE_KEYS as $k ) {
+				$merged[ $k ] = $row[ $k ] ?? null;
 			}
 		}
-		$t   = self::table();
-		$upd = 'account_id=VALUES(account_id), package_code=VALUES(package_code), months=VALUES(months), allowance=VALUES(allowance), amount_vnd=VALUES(amount_vnd), valid_until=VALUES(valid_until), applied_at=VALUES(applied_at)';
-		$sql = "INSERT INTO {$t} (" . implode( ',', $cols ) . ') VALUES (' . implode( ',', $ph ) . ") ON DUPLICATE KEY UPDATE {$upd}";
+		$payload = BizCity_Usage_Schema::kind_payload( $merged, self::SALE_COLS );
+		$json    = function_exists( 'wp_json_encode' ) ? wp_json_encode( $payload ) : json_encode( $payload );
+		$now     = self::fmt( self::now() );
+		$at      = (string) ( $merged['paid_at'] ?? $now );
+		$cols    = 'account_id, account_seq, row_ref, kind, occurred_at, occurred_day, platform, bound_user_id, resolve_state, received_at, payload';
+		$ph      = '%s,%d,%s,%s,%s,%s,%s,%d,%s,%s,%s';
+		$args    = array( BizCity_Usage_Schema::SALE_ACCOUNT, $seq, 'sale', 'sale', $at, substr( $at, 0, 10 ), (string) ( $merged['platform'] ?? '' ), (int) ( $merged['payer_user_id'] ?? 0 ), 'ok', $now, (string) $json );
+		if ( BizCity_Usage_Schema::has_key_column() ) {
+			$cols  .= ', key_id';
+			$ph    .= ',%d';
+			$args[] = BizCity_Usage_Schema::site_key_id();
+		}
+		$keep_refund = "IF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.status')) = 'refunded', JSON_SET(VALUES(payload), '$.status', 'refunded', '$.refunded_at', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.refunded_at')), '')), VALUES(payload))";
+		$sql = "INSERT INTO {$led} ({$cols}) VALUES ({$ph}) ON DUPLICATE KEY UPDATE payload = {$keep_refund}, platform = VALUES(platform), bound_user_id = VALUES(bound_user_id), received_at = VALUES(received_at)";
 		return false !== self::exec( $sql, $args );
 	}
 
@@ -194,8 +262,13 @@ final class BizCity_Usage_Plan_Sales {
 	}
 
 	public static function mark_refunded( int $order_id, int $now ): bool {
-		$t = self::table();
-		return false !== self::exec( "UPDATE {$t} SET status = %s, refunded_at = %s WHERE order_id = %d AND status = %s", array( self::ST_REFUNDED, self::fmt( $now ), $order_id, self::ST_PAID ) );
+		// [2026-11-17 12:30 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2 — the sale is a ledger row: only status / refunded_at change (constant values, so
+		// JSON_SET behaves the same on MySQL and MariaDB); a paid order only, never twice.
+		$led = BizCity_Usage_Schema::ledger_physical_table();
+		return false !== self::exec(
+			"UPDATE {$led} SET payload = JSON_SET(payload, '$.status', %s, '$.refunded_at', %s) WHERE account_id = %s AND account_seq = %d AND kind = 'sale' AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.status')) = %s",
+			array( self::ST_REFUNDED, self::fmt( $now ), BizCity_Usage_Schema::SALE_ACCOUNT, self::seq( $order_id ), self::ST_PAID )
+		);
 	}
 
 	/* ================================================================
@@ -282,7 +355,8 @@ final class BizCity_Usage_Plan_Sales {
 			);
 		}
 		if ( $out ) {
-			$last = self::rows( "SELECT s.account_id, s.order_id, s.method FROM {$t} s JOIN (SELECT account_id, MAX(paid_at) AS m FROM {$t} GROUP BY account_id) x ON x.account_id = s.account_id AND x.m = s.paid_at", array() );
+			// [2026-11-17 12:30 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2 — {$t} is a derived table with its own alias: no `{$t} s JOIN … x` any more.
+			$last = self::rows( "SELECT account_id, order_id, method FROM {$t} WHERE (account_id, paid_at) IN (SELECT account_id, MAX(paid_at) FROM {$t} GROUP BY account_id)", array() );
 			foreach ( $last as $r ) {
 				if ( isset( $out[ (string) $r['account_id'] ] ) ) {
 					$out[ (string) $r['account_id'] ]['last_order_id'] = (int) $r['order_id'];

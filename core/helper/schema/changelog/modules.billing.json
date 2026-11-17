@@ -4,7 +4,7 @@
   "owner": "core/channel-gateway/includes/usage",
   "owner_moved": "[2026-10-25 10:05 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.139 R126-BILL — the usage / billing module is core again (no add-on): the tables below are installed by BizCity_Usage_Schema, BizCity_Brain_Journey_Schema and BizCity_Usage_Plan_Sales from core/channel-gateway/includes/usage/. module_id kept so the history stays continuous.",
   "installer_id": "billing_usage",
-  "current_version": "1.7.0",
+  "current_version": "1.9.0",
   "version_option": "bizcity_usage_ledger_schema",
   "tables": {
     "bizcity_usage_ledger": {
@@ -166,6 +166,11 @@
         "subject_ref": {
           "type": "VARCHAR(64) NULL",
           "since": "1.7.0"
+        },
+        "key_id": {
+          "type": "BIGINT UNSIGNED NOT NULL DEFAULT 0",
+          "since": "1.9.0",
+          "note": "API key that owns the row: the Hub key_id on ingested rows, this site key (option bizcity_usage_site_key_id) on site rows (PHASE-0.154 §9)"
         }
       },
       "indexes": {
@@ -232,6 +237,14 @@
             "subject_ref"
           ],
           "since": "1.7.0"
+        },
+        "idx_key_time": {
+          "type": "KEY",
+          "cols": [
+            "key_id",
+            "occurred_at"
+          ],
+          "since": "1.9.0"
         }
       }
     },
@@ -352,12 +365,12 @@
     },
     "bizcity_account_plans": {
       "lifecycle": {
-        "wave": "PHASE-0.126 R126-BILL",
-        "date": "2026-10-25",
-        "state": "extension_owned",
-        "replacement": "owned by bizcity-billing-addon",
-        "drop_candidate": false,
-        "rows": "kept"
+        "wave": "PHASE-0.154 W2c-1",
+        "date": "2026-11-17",
+        "state": "quarantine",
+        "replacement": "ledger rows kind='plan' in bizcity_usage_ledger (account_id = the number, account_seq 4.1e18 + platform code), derived table BizCity_Usage_Schema::plans_table() / plans_view_as(); old rows copied once by the cron bizcity_usage_plans_copy, read as the view fallback until then",
+        "drop_candidate": true,
+        "rows": "kept (never written; DROP only with the owner approval, R-TABLE-FREEZE)"
       },
       "since": "1.10.0",
       "purpose": "PHASE-0.107 round 4 S107-L14 (doc 66 §8.1) — the client's commercial plan (trial / pro / other) per ACCOUNT ID, per blog. The site is the source of truth of the plan; the cell is the source of truth of token counts (no token counter is stored). plan_mode defaults to off: no row / off = nothing is blocked. plan_version is monotonic per account and bumped on every change (the cell ignores older versions). Enforced on the SITE (round 5): BizCity_Usage_Plan_Enforce flips the number's AI switch; used tokens are SUM(billed_tokens) of bizcity_usage_ledger and are not stored here. Deliberately NOT a column of the Hub mirror bizcity_zalo_accounts, not BizCity_Plans, not master_level.",
@@ -627,12 +640,12 @@
     },
     "bizcity_brain_journey": {
       "lifecycle": {
-        "wave": "PHASE-0.126 R126-BILL",
-        "date": "2026-10-25",
-        "state": "extension_owned",
-        "replacement": "owned by bizcity-billing-addon",
-        "drop_candidate": false,
-        "rows": "kept"
+        "wave": "PHASE-0.154 W3",
+        "date": "2026-11-17",
+        "state": "quarantine",
+        "replacement": "ledger rows kind='journey' in bizcity_usage_ledger (account_id = subject_id, account_seq = band brain 4.5e18 / owner 4.6e18 / site 4.7e18 + seq; every column in the payload, hashes unchanged), derived table BizCity_Brain_Journey_Schema::journey_table(); copied once by the cron bizcity_brain_journey_copy, closed only when nothing is missing and every chain verifies",
+        "drop_candidate": true,
+        "rows": "kept (never written; export JSONL + DROP only with the owner approval, R-TABLE-FREEZE)"
       },
       "since": "1.0.0",
       "purpose": "PHASE-0.108 S108-L1 (brain-journey@1) — append-only, hash-chained journal of milestones / badges / owner ladder steps per subject (subject_kind brain = one account_id, owner = one WP user, site = site-wide). occurred_at UTC; owner_user_id = owner AT THE MOMENT the row was written (never rewritten). Created by BizCity_Brain_Journey_Schema (option bizcity_brain_journey_schema). Was created but never declared before PHASE-0.126 R126-BILL.",
@@ -765,12 +778,12 @@
     },
     "bizcity_brain_journey_heads": {
       "lifecycle": {
-        "wave": "PHASE-0.126 R126-BILL",
-        "date": "2026-10-25",
-        "state": "extension_owned",
-        "replacement": "owned by bizcity-billing-addon",
-        "drop_candidate": false,
-        "rows": "kept"
+        "wave": "PHASE-0.154 W1",
+        "date": "2026-11-17",
+        "state": "quarantine",
+        "replacement": "none: the chain head is the subject's last bizcity_brain_journey row (UNIQUE subject_kind, subject_id, seq); writers serialised by GET_LOCK per (blog, subject)",
+        "drop_candidate": true,
+        "rows": "kept (never read, never written; DROP only with the owner approval, R-TABLE-FREEZE)"
       },
       "since": "1.0.0",
       "purpose": "PHASE-0.108 S108-L1 — head of each subject's hash chain in bizcity_brain_journey (last seq + last hash), so an append never scans the journal. Created by BizCity_Brain_Journey_Schema. Was created but never declared before PHASE-0.126 R126-BILL.",
@@ -814,12 +827,12 @@
     },
     "bizcity_brain_metrics": {
       "lifecycle": {
-        "wave": "PHASE-0.126 R126-BILL",
-        "date": "2026-10-25",
-        "state": "extension_owned",
-        "replacement": "owned by bizcity-billing-addon",
-        "drop_candidate": false,
-        "rows": "kept"
+        "wave": "PHASE-0.154 W1",
+        "date": "2026-11-17",
+        "state": "quarantine",
+        "replacement": "ledger rows kind='metric' in bizcity_usage_ledger (account_seq 4.3e18), derived table BizCity_Brain_Journey_Schema::metrics_table()",
+        "drop_candidate": true,
+        "rows": "kept (never read, never written; DROP only with the owner approval, R-TABLE-FREEZE)"
       },
       "since": "1.0.0",
       "purpose": "PHASE-0.108 (D108-4, 10-SPEC §9 G-2/G-3/G-4) — per-account cache of the achievements figures, always rebuilt whole-row from bizcity_usage_ledger + Woo, never incremented. customer_replies / distinct_customers are LIFETIME totals (milestone thresholds); the _month columns feed \\\"làm thay\\\" and the efficiency ratio; ai_enabled tells idle apart from AI-off. Created by BizCity_Brain_Journey_Schema (1.1.0 adds the _month columns + ai_enabled). Was created but never declared before PHASE-0.126 R126-BILL.",
@@ -933,12 +946,12 @@
     },
     "bizcity_brain_metrics_period": {
       "lifecycle": {
-        "wave": "PHASE-0.126 R126-BILL",
-        "date": "2026-10-25",
-        "state": "extension_owned",
-        "replacement": "owned by bizcity-billing-addon",
-        "drop_candidate": false,
-        "rows": "kept"
+        "wave": "PHASE-0.154 W1",
+        "date": "2026-11-17",
+        "state": "quarantine",
+        "replacement": "ledger rows kind='period' in bizcity_usage_ledger (account_seq 4.4e18 + range code), derived table BizCity_Brain_Journey_Schema::period_table()",
+        "drop_candidate": true,
+        "rows": "kept (never read, never written; DROP only with the owner approval, R-TABLE-FREEZE)"
       },
       "since": "1.2.0",
       "purpose": "PHASE-0.108 S108-L11a — one row per (account, window 7d / 30d / month): the leaderboard's per-period figures with the 20/customer/day cap already applied (D108-U1), plus the equally long window before it for the ▲▼ arrows. Cache only: BizCity_Brain_Period_Metrics rebuilds a row whole. Created by BizCity_Brain_Journey_Schema since SCHEMA_VERSION 1.2.0. Was created but never declared before PHASE-0.126 R126-BILL.",
@@ -1035,12 +1048,12 @@
     },
     "bizcity_plan_sales": {
       "lifecycle": {
-        "wave": "PHASE-0.126 R126-BILL",
-        "date": "2026-10-25",
-        "state": "extension_owned",
-        "replacement": "owned by bizcity-billing-addon",
-        "drop_candidate": false,
-        "rows": "kept"
+        "wave": "PHASE-0.154 W2",
+        "date": "2026-11-17",
+        "state": "quarantine",
+        "replacement": "ledger rows kind='sale' in bizcity_usage_ledger (account_id '_sale', account_seq 4.2e18 + order_id, number in the payload), derived table BizCity_Usage_Plan_Sales::table(); old rows copied once by the cron bizcity_usage_sales_copy",
+        "drop_candidate": true,
+        "rows": "kept (never read except by the one-time copy, never written; DROP only with the owner approval, R-TABLE-FREEZE)"
       },
       "since": "1.0.0",
       "purpose": "PHASE-0.108 S108-L18.2 — revenue ledger of plan sales per Zalo number: one row per Woo order that extended a plan (UNIQUE order_id), written on bizcity_usage_plan_applied AFTER BizCity_Usage_Plan_Woo::apply(); refunds flip status. Money in VND, floor_vnd / floor_version = the Hub price floor at sale time. Created by BizCity_Usage_Plan_Sales (option bizcity_plan_sales_schema). Was created but never declared before PHASE-0.126 R126-BILL.",
@@ -1198,6 +1211,26 @@
       "version": "1.7.0",
       "date": "2026-10-25",
       "change": "[2026-10-25 10:05 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.139 R126-BILL — owner asked for the whole \"Sử dụng\" page back without the billing add-on: owner path is core/channel-gateway/includes/usage again and the module leaves extension_owned_changelogs (its tables count as live client tables again). No DDL change."
+    },
+    {
+      "version": "1.8.0",
+      "date": "2026-11-17",
+      "change": "[2026-11-17 11:20 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W1 (D154-1/2, owner: \"một bảng ledger … bảng cũ sau khi chép để quarantine hoàn toàn, ko tồn tại trong install mới\") — bizcity_brain_journey_heads, bizcity_brain_metrics, bizcity_brain_metrics_period are no longer created (BizCity_Brain_Journey_Schema 1.2.0 → 1.3.0) and enter the quarantine list. Heads: derived from the last journey row. Metrics / period: cache rows of bizcity_usage_ledger (kind metric / period), rebuilt by the evaluator; no copy needed. BizCity_Usage_Schema::ledger_table() becomes an allow list (BizCity_Usage_Ingest::KINDS) so cache rows never reach a token reader. No DDL on existing tables."
+    },
+    {
+      "version": "1.9.0",
+      "date": "2026-11-17",
+      "change": "[2026-11-17 12:30 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2 (D154-1/2/4, §9 \"một khoá ⇒ một sổ\") — bizcity_usage_ledger += key_id BIGINT UNSIGNED NOT NULL DEFAULT 0 + KEY idx_key_time (key_id, occurred_at) (BizCity_Usage_Schema 1.7.0 → 1.8.0, additive dbDelta; writers fill it only once the column exists). bizcity_plan_sales is no longer created and enters the quarantine list: each order is one ledger row kind sale (account _sale, seq 4.2e18 + order_id); the old rows are copied once by a paged cron (INSERT IGNORE, done when no old order is missing)."
+    },
+    {
+      "version": "1.9.0",
+      "date": "2026-11-17",
+      "change": "[2026-11-17 01:10 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2c-1 — bizcity_account_plans is no longer created and enters the quarantine list: a number's plan is one ledger row kind plan (account_id = number, seq 4.1e18 + platform code; unknown platform refused). Old rows copied once by a paged cron (INSERT IGNORE); until done the view also returns old rows not yet copied, so the AI switch never loses a plan. Plan behaviour unchanged (D154-4 precedence is a separate step). No DDL on existing tables."
+    },
+    {
+      "version": "1.9.0",
+      "date": "2026-11-17",
+      "change": "[2026-11-17 02:20 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W3 — bizcity_brain_journey is no longer created (BizCity_Brain_Journey_Schema 1.3.0 → 1.4.0: no brain table left) and enters the quarantine list. Each journey event is one ledger row kind journey on (subject_id, band + seq) — the old UNIQUE(subject_kind, subject_id, seq); dedupe stays checked under the per-subject GET_LOCK. Old rows copied once by a paged cron (INSERT IGNORE), closed only when no row is missing and verify_chain passes for every subject; until then the view also returns the old rows so the chain head is always visible. modules.billing now has ONE live table: bizcity_usage_ledger."
     }
   ],
   "installer_note": "[2026-10-25 10:05 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.139 R126-BILL — BizCity_Usage_Schema (bizcity_usage_ledger_schema) and the two other installers run from core again."

@@ -32,6 +32,9 @@ final class BizCity_Usage_Plan_Enforce {
 	const REASON_EXPIRED   = 'plan_expired';
 	const REASON_ALLOWANCE = 'plan_allowance_exhausted';
 	const OPT_RENEW_URL    = 'bizcity_plan_renew_url';
+	// [2026-11-17 01:50 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2c-2 (D154-4 = A) — Hub refusals of "switch AI on" (its plan caps the AI numbers of the key).
+	const HUB_REFUSALS     = array( 'account_limit_reached', 'over_limit' );
+	const ERROR_HUB_LIMIT  = 'hub_limit';
 
 	/** Test seams: ai_enabled(id): bool · switch(id, bool): array{ok,code} · owner_uid(id): string · send(id, uid, text, idem): bool · label(id): string · log(msg, ctx) · option(n, d) */
 	public static $readers = array();
@@ -107,6 +110,16 @@ final class BizCity_Usage_Plan_Enforce {
 		if ( '' !== $ours ) {
 			if ( ! $ai ) {
 				$r = self::switch_ai( $account, true );
+				if ( ! $r['ok'] && in_array( (string) $r['code'], self::HUB_REFUSALS, true ) ) {
+					// [2026-11-17 01:50 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2c-2 (D154-4 = A, Q154-6) — the Hub is the ceiling, the site only
+					// subtracts: the Hub refused to switch this number back on (its plan allows fewer AI numbers). The site is no longer the reason
+					// the AI is off, so it stops claiming it (and stops retrying every ingest / day); the Hub decides when the number comes back.
+					$row['ai_off_by_plan'] = '';
+					$row['ai_off_at']      = null;
+					$row['enforce_error']  = self::ERROR_HUB_LIMIT;
+					self::save( $row );
+					return array( 'action' => 'hub_off', 'reason' => '', 'error' => self::ERROR_HUB_LIMIT );
+				}
 				if ( ! $r['ok'] ) {
 					return self::fail( $row, $r['code'] );
 				}
@@ -117,7 +130,9 @@ final class BizCity_Usage_Plan_Enforce {
 			self::save( $row );
 			return array( 'action' => 'ai_on', 'reason' => '', 'error' => '' );
 		}
-		if ( '' !== (string) $row['enforce_error'] ) {
+		// [2026-11-17 01:50 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2c-2 — only a switch error of ours is cleared here; `hub_limit` stays so the screen
+		// keeps saying why the number is off (the Hub, not the site plan).
+		if ( 0 === strpos( (string) $row['enforce_error'], 'switch_' ) ) {
 			$row['enforce_error'] = '';
 			self::save( $row );
 		}

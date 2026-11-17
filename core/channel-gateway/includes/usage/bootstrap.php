@@ -69,6 +69,12 @@ foreach ( $_bzc_usage_files as $_bzc_usage_file => $_bzc_usage_label ) {
 unset( $_bzc_usage_files, $_bzc_usage_file, $_bzc_usage_label );
 if ( class_exists( 'BizCity_Usage_Schema' ) ) {
 	add_action( 'admin_init', array( 'BizCity_Usage_Schema', 'maybe_install' ) );
+	// [2026-11-17 11:45 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 S154-0.6 (N7) — paged activity_day ⇒ ledger copy on WP-Cron (also repairs sites cut at 20 000 rows).
+	add_action( 'admin_init', array( 'BizCity_Usage_Schema', 'schedule_merge' ) );
+	add_action( BizCity_Usage_Schema::MERGE_HOOK, array( 'BizCity_Usage_Schema', 'merge_legacy_activity' ) );
+	// [2026-11-17 01:10 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2c-1 — one-time paged copy bizcity_account_plans ⇒ ledger rows kind 'plan'.
+	add_action( 'admin_init', array( 'BizCity_Usage_Schema', 'schedule_plans_copy' ) );
+	add_action( BizCity_Usage_Schema::PLANS_COPY_HOOK, array( 'BizCity_Usage_Schema', 'copy_plans' ) );
 }
 if ( class_exists( 'BizCity_Usage_Ingest' ) && class_exists( 'BizCity_Usage_Prices' ) ) {
 	BizCity_Usage_Ingest::init();
@@ -160,9 +166,25 @@ foreach ( $_bzc_brain_files as $_bzc_brain_file => $_bzc_brain_label ) {
 		require_once $_bzc_brain_file;
 	}
 }
+// [2026-11-17 02:50 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W4 — `wp bizcity usage-audit` (read-only); loaded under WP-CLI only (R-PERF).
+if ( defined( 'WP_CLI' ) && WP_CLI && class_exists( 'BizCity_Usage_Schema' ) ) {
+	$_bzc_audit_file = $_bzc_billing_dir . 'class-usage-audit.php';
+	if ( class_exists( 'BizCity_Safe_Loader', false ) ) {
+		BizCity_Safe_Loader::require_file( $_bzc_audit_file, 'channel.usage.audit' );
+	} elseif ( is_file( $_bzc_audit_file ) && is_readable( $_bzc_audit_file ) ) {
+		require_once $_bzc_audit_file;
+	}
+	if ( class_exists( 'BizCity_Usage_Audit' ) ) {
+		BizCity_Usage_Audit::init();
+	}
+	unset( $_bzc_audit_file );
+}
 unset( $_bzc_brain_files, $_bzc_brain_file, $_bzc_brain_label, $_bzc_billing_dir );
 if ( class_exists( 'BizCity_Brain_Journey_Schema' ) ) {
 	add_action( 'admin_init', array( 'BizCity_Brain_Journey_Schema', 'maybe_install' ) );
+	// [2026-11-17 02:20 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W3 — one-time paged copy bizcity_brain_journey ⇒ ledger rows kind 'journey' (verified chains).
+	add_action( 'admin_init', array( 'BizCity_Brain_Journey_Schema', 'schedule_journey_copy' ) );
+	add_action( BizCity_Brain_Journey_Schema::JOURNEY_COPY_HOOK, array( 'BizCity_Brain_Journey_Schema', 'copy_journey' ) );
 }
 if ( class_exists( 'BizCity_Brain_Journey_Evaluator' ) && class_exists( 'BizCity_Brain_Journey_Schema' ) ) {
 	BizCity_Brain_Journey_Evaluator::init();

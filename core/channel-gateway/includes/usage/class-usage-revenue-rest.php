@@ -384,8 +384,8 @@ final class BizCity_Usage_Revenue_REST {
 
 	private static function from_sql(): string {
 		$acc   = self::accounts_table();
-		$plans = BizCity_Usage_Schema::plans_table();
-		return "FROM {$acc} a LEFT JOIN {$plans} p ON p.platform = 'zalo_personal' AND p.account_id = a.bridge_account_id WHERE a.kind = 'personal'";
+		$plans = BizCity_Usage_Schema::plans_view_as( 'p' ); // [2026-11-17 01:10 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2c-1 — derived table aliased `p` (no second alias below)
+		return "FROM {$acc} a LEFT JOIN {$plans} ON p.platform = 'zalo_personal' AND p.account_id = a.bridge_account_id WHERE a.kind = 'personal'";
 	}
 
 	/** @return array{0:string,1:array} extra WHERE (starts with AND) + args */

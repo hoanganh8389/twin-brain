@@ -85,6 +85,11 @@ final class BizCity_Usage_Ingest {
 		if ( 0 !== strpos( (string) ( $body['contract'] ?? '' ), self::CONTRACT ) || '' === $account || ! isset( $body['rows'] ) || ! is_array( $body['rows'] ) ) {
 			return new WP_REST_Response( array( 'ok' => false, 'code' => 'invalid_param', 'message' => 'contract, account_id and rows are required.' ), 400 );
 		}
+		// [2026-11-17 10:24 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 S154-P.1 (C-G2) — the authenticated number must own the rows.
+		if ( ! self::account_allowed( $account, $auth ) ) {
+			self::log( 'usage-ledger@1 refused: account mismatch.', array( 'account_id' => $account ) );
+			return self::account_mismatch_response( self::CONTRACT );
+		}
 		if ( count( $body['rows'] ) > self::MAX_ROWS ) {
 			return new WP_REST_Response( array( 'ok' => false, 'code' => 'invalid_param', 'message' => 'at most ' . self::MAX_ROWS . ' rows per batch.' ), 400 );
 		}
@@ -107,7 +112,13 @@ final class BizCity_Usage_Ingest {
 		if ( ! isset( self::$readers['head'] ) && class_exists( 'BizCity_Usage_Schema' ) ) {
 			BizCity_Usage_Schema::maybe_install();
 		}
-		$answer = self::ingest( $account, array_values( $rows ) );
+		// [2026-11-17 12:30 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2 (§9) — the Hub stamps the owning API key on every batch: every row keeps it
+		// (one key ⇒ one ledger, traceable cell ⇒ Hub ⇒ site) and the site learns its own key id without calling the Hub.
+		$key_id = max( 0, (int) ( $body['key_id'] ?? 0 ) );
+		if ( $key_id > 0 && class_exists( 'BizCity_Usage_Schema' ) && ! isset( self::$readers['head'] ) ) {
+			BizCity_Usage_Schema::remember_site_key( $key_id );
+		}
+		$answer = self::ingest( $account, array_values( $rows ), $key_id );
 		// [2026-10-13 03:30 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.107 round 5 — new ledger rows may push a plan account over its allowance: run the plan
 		// enforcement for THIS account, and only when it has plan_mode on (the batch no longer carries any token figure; the sum comes from our own ledger).
 		if ( (int) $answer['inserted'] > 0 && class_exists( 'BizCity_Usage_Plan_Enforce' ) ) {
@@ -126,14 +137,14 @@ final class BizCity_Usage_Ingest {
 	 *
 	 * @return array<string,mixed> usage-ledger@1 answer
 	 */
-	public static function ingest( string $account, array $rows ): array {
+	public static function ingest( string $account, array $rows, int $key_id = 0 ): array {
 		$head     = self::head( $account );
 		$expected = $head + 1;
 		$inserted = 0;
 		$dup      = 0;
 		$gap      = null;
 		$touched  = array();
-		$ctx      = array( 'account' => $account, 'web' => 0 === strpos( $account, 'web-' ), 'owner' => null, 'actors' => array(), 'warned' => false );
+		$ctx      = array( 'account' => $account, 'web' => 0 === strpos( $account, 'web-' ), 'owner' => null, 'actors' => array(), 'warned' => false, 'key_id' => $key_id );
 		foreach ( $rows as $r ) {
 			$seq = (int) $r['account_seq'];
 			if ( $seq < $expected ) {
@@ -249,6 +260,11 @@ final class BizCity_Usage_Ingest {
 		if ( '' !== $subject ) {
 			$rec['subject_ref'] = $subject;
 		}
+		// [2026-11-17 12:30 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 W2 (§9) — the owning key, only once the column exists (schema 1.8.0).
+		$key = (int) ( $ctx['key_id'] ?? 0 );
+		if ( $key > 0 && ( isset( self::$readers['key_column'] ) ? (bool) call_user_func( self::$readers['key_column'] ) : ( class_exists( 'BizCity_Usage_Schema' ) && BizCity_Usage_Schema::has_key_column() ) ) ) {
+			$rec['key_id'] = $key;
+		}
 		return $rec;
 	}
 
@@ -311,6 +327,42 @@ final class BizCity_Usage_Ingest {
 
 	private static function now(): int {
 		return isset( self::$readers['now'] ) ? (int) call_user_func( self::$readers['now'] ) : time();
+	}
+
+	/**
+	 * May the number the Hub authenticated with ($auth) write rows for $account?
+	 * // [2026-11-17 10:24 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.154 S154-P.1 (C-G2) — before this, the Bearer was checked for $auth but rows were stored
+	 * under body.account_id with no link between the two: one number's callback token could write (and pre-empt the seq of) any other number.
+	 * Allowed: the same number; or a web account `web-<key>` (no bridge row, the cell authenticates it through any number of the same tenant,
+	 * usage-ledger@1 notes) — equal to this site's own web account when the site knows it. Shared by activity-day@1 and ops-day@1.
+	 */
+	public static function account_allowed( string $account, string $auth ): bool {
+		if ( '' === $account || '' === $auth ) {
+			return false;
+		}
+		if ( $account === $auth ) {
+			return true;
+		}
+		if ( 1 !== preg_match( '/^web-\d+$/', $account ) ) {
+			return false; // a number may never write for another number
+		}
+		$site = '';
+		if ( isset( self::$readers['site_web_account'] ) ) {
+			$site = (string) call_user_func( self::$readers['site_web_account'] );
+		} elseif ( class_exists( 'BizCity_Twin_Web_Turn' ) && method_exists( 'BizCity_Twin_Web_Turn', 'web_account_id' ) ) {
+			$site = (string) BizCity_Twin_Web_Turn::web_account_id();
+		}
+		return '' === $site || $site === $account; // site key id not learnt yet: accept the web shape (cannot verify more)
+	}
+
+	/** The refusal for account_allowed() === false: non-2xx so the Hub does not mark the batch delivered. */
+	public static function account_mismatch_response( string $contract ): WP_REST_Response {
+		return new WP_REST_Response( array(
+			'ok'      => false,
+			'code'    => 'account_mismatch',
+			'message' => 'The authenticated number may not write ' . $contract . ' rows for this account.',
+			'hint'    => 'Send the rows with the same number in X-BizCity-Auth-Account and account_id (or this site\'s own web account).',
+		), 403 );
 	}
 
 	private static function token( string $account ): string {
