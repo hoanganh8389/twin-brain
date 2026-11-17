@@ -286,7 +286,6 @@ class BizCity_Guru_Studio {
 			}
 		}
 		$faq = self::faq_counts();
-		$nb  = self::notebook_counts();
 		$access = array();
 		$fout   = array();
 		foreach ( $folders as $f ) {
@@ -336,7 +335,7 @@ class BizCity_Guru_Studio {
 				'prompt_head' => mb_substr( trim( (string) ( $c->system_prompt ?? '' ) ), 0, 160 ),
 				'faq_count'   => (int) ( $faq[ $id ] ?? 0 ),
 				'folders'     => $mine,
-				'notebooks'   => (int) ( $nb[ $id ] ?? 0 ),
+				// [2026-11-15 12:54 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 G (Q151-12) — no `notebooks` count: a Guru answers from `folders` + its instruction
 				'docs'        => array_sum( array_map( static function ( $n ) use ( $know ) { return (int) ( $know[ $n ] ?? 0 ); }, $mine ) ), // what the Guru knows (bản đọc)
 				'sources'     => array_sum( array_map( static function ( $n ) use ( $counts ) { return (int) ( $counts[ $n ] ?? 0 ); }, $mine ) ),
 				'channels'    => $ch,
@@ -466,25 +465,6 @@ class BizCity_Guru_Studio {
 		$rows = $wpdb->get_results( "SELECT character_id, COUNT(*) c FROM `{$t}` WHERE source_type = 'quick_faq' AND status = 'ready' GROUP BY character_id", ARRAY_A );
 		$out  = array();
 		foreach ( (array) $rows as $r ) {
-			$out[ (int) $r['character_id'] ] = (int) $r['c'];
-		}
-		return $out;
-	}
-
-	private static function notebook_counts(): array {
-		global $wpdb;
-		if ( isset( self::$seams['notebook_counts'] ) ) {
-			return (array) call_user_func( self::$seams['notebook_counts'] );
-		}
-		if ( ! isset( $wpdb ) ) {
-			return array();
-		}
-		$t = $wpdb->prefix . 'bizcity_notebook_character_attachments';
-		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $t ) ) !== $t ) {
-			return array();
-		}
-		$out = array();
-		foreach ( (array) $wpdb->get_results( "SELECT character_id, COUNT(*) c FROM `{$t}` GROUP BY character_id", ARRAY_A ) as $r ) {
 			$out[ (int) $r['character_id'] ] = (int) $r['c'];
 		}
 		return $out;

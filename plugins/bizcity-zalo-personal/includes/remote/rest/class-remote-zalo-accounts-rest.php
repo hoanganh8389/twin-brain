@@ -36,9 +36,11 @@ final class BizCity_Remote_Zalo_Accounts_REST {
 		register_rest_route( self::NS, '/zalo-remote/accounts/(?P<account_ref>[^/]+)/unlink', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'unlink_account' ), 'permission_callback' => array( __CLASS__, 'can_manage' ) ) );
 		// [2026-09-29 Claude Opus 5.5] PHASE-0.82 XS1 (LX-2) — change who owns a linked nick, from the "Số đang kết nối" row.
 		register_rest_route( self::NS, '/zalo-remote/accounts/(?P<account_ref>[^/]+)/owner', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'set_owner' ), 'permission_callback' => array( __CLASS__, 'can_manage' ) ) );
+		// [2026-11-15 11:05 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V3 (Q153-7: mỗi user id tự setup QR của mình) — the QR login of a number is open to
+		// the user who OWNS that number too, not only to admins; linking / unlinking / changing the owner stays admin-only.
 		register_rest_route( self::NS, '/zalo-remote/accounts/(?P<account_ref>[^/]+)/login', array(
-			array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'login_start' ), 'permission_callback' => array( __CLASS__, 'can_manage' ) ),
-			array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'login_status' ), 'permission_callback' => array( __CLASS__, 'can_manage' ) ),
+			array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'login_start' ), 'permission_callback' => array( __CLASS__, 'can_manage_or_own' ) ),
+			array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'login_status' ), 'permission_callback' => array( __CLASS__, 'can_manage_or_own' ) ),
 		) );
 		// [2026-09-30 Claude Sonnet 5] PHASE-0.82 XS6 (51 §4.6) — "Đồng bộ ngay" for one nick's Agent Guru → remote agent.
 		register_rest_route( self::NS, '/zalo-remote/accounts/(?P<account_ref>[^/]+)/agent/sync', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'sync_agent' ), 'permission_callback' => array( __CLASS__, 'can_manage' ) ) );
@@ -46,6 +48,26 @@ final class BizCity_Remote_Zalo_Accounts_REST {
 		register_rest_route( self::NS, '/zalo-remote/accounts/(?P<account_ref>[^/]+)/threads/(?P<thread_ref>[^/]+)/messages', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'list_messages' ), 'permission_callback' => array( __CLASS__, 'can_manage' ) ) );
 	}
 	public static function can_manage(): bool { return current_user_can( 'manage_options' ); }
+
+	/**
+	 * [2026-11-15 11:05 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V3 — an admin, or the WP user that owns this linked number (owner_user_id of
+	 * `rzh:<account_ref>`, set by an admin when linking) and may write posts (Q153-11). Never a number of someone else.
+	 */
+	public static function can_manage_or_own( $request = null ): bool {
+		if ( self::can_manage() ) {
+			return true;
+		}
+		$me = (int) get_current_user_id();
+		if ( $me <= 0 || ! current_user_can( 'edit_posts' ) || ! is_object( $request ) || ! method_exists( $request, 'get_param' ) ) {
+			return false;
+		}
+		$ref = sanitize_text_field( (string) $request->get_param( 'account_ref' ) );
+		if ( '' === $ref ) {
+			return false;
+		}
+		$local = BizCity_Remote_Zalo_Link_Service::lookup( BizCity_Remote_Zalo_Link_Service::PREFIX . $ref, self::deps() );
+		return is_array( $local ) && 'disconnected' !== (string) ( $local['status'] ?? '' ) && $me === (int) ( $local['owner_user_id'] ?? 0 );
+	}
 
 	/** LX-1 — one row per provisioned nick, merged with the local link state. Never `zaloUid`. */
 	public static function list_accounts( $request = null ) {

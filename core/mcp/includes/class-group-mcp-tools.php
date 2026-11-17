@@ -9,6 +9,7 @@
  * | group.files | read — tài liệu nhóm đã giữ (W2) | như trên | never |
  * | group.files.save | write, idempotent — "nhắc lưu là lưu" (W2, R-JN-27), CELL-system | bậc 1 + 2 | never |
  * | group.settings.set | write, idempotent — CELL-system (model không thấy tên này; tool cell `group_secretary` gọi) | chỉ bậc 1 (UID chủ) | never |
+ * | group.presence.record | write, idempotent — CELL-system (PHASE-0.153 V4): chủ số có trong nhóm không ⇒ cột ma trận lưu | chỉ bậc 1 | never |
  *
  * Bậc quyền KHÔNG lấy từ principal (lượt trong nhóm cell gọi bằng principal của chủ số): `requester_uid` = UID người đang ra lệnh,
  * site tự xếp bậc từ `policy.owner_uid` + danh sách người được giao của ĐÚNG nhóm (BizCity_CRM_Group_Secretary::tier). Thiếu
@@ -299,6 +300,46 @@ final class BizCity_Group_MCP_Tools {
 			'fallback_pack'  => null,
 			'since'          => self::SINCE,
 		) );
+
+		// [2026-11-16 09:04 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V4 (Q153-1) — cell báo "UID chủ số có trong nhóm" (đọc bằng zca). Chọn cột ma trận lưu.
+		// @mcp bizcity-mcp-standard@1 tool group.presence.record
+		$R::register( 'group.presence.record', array(
+			'title'          => 'Ghi nhận chủ số có trong nhóm',
+			'description'    => 'Cell báo chủ số có phải thành viên của nhóm Zalo này không (danh sách thành viên đọc qua phiên Zalo). Site dùng cờ để chọn cột "Nhóm có chủ" / "Nhóm không có chủ" của ma trận lưu. Chỉ bậc 1; không đọc dữ liệu nhóm.',
+			'input_schema'   => array( 'type' => 'object', 'required' => array( 'requester_uid', 'thread_id', 'owner_in' ), 'properties' => array(
+				'requester_uid' => $uid,
+				'thread_id'     => array( 'type' => 'string', 'pattern' => '^[0-9]{3,30}$' ),
+				'owner_in'      => array( 'type' => 'boolean' ),
+			) ),
+			'output_schema'  => $R::envelope_schema( array( 'owner_in' => array( 'type' => 'boolean' ), 'changed' => array( 'type' => 'boolean' ), 'minutes' => array( 'type' => 'boolean' ) ), array( 'owner_in', 'changed' ) ), // [2026-11-17 11:36 AM Johnny Chu - Chu Hoàng Anh] minutes: the cell keeps a notebook for this group (Q153-3)
+			'read_only'      => false,
+			'idempotent'     => true,
+			'required_scope' => 'memory.write',
+			'handler'        => array( __CLASS__, 'presence_record' ),
+			'mode'           => 'notebook',
+			'roles'          => array( 'owner', 'staff' ),
+			'scopes'         => array( 'memory.write' ),
+			'confirm'        => 'never',
+			'llm_alias'      => 'group_presence_record',
+			'fallback_pack'  => null,
+			'since'          => '0.153.0',
+		) );
+	}
+
+	/** PHASE-0.153 V4 — bậc 1 (requester = UID chủ số) mới ghi được; nhóm chưa có hội thoại CRM vẫn ghi theo gid. */
+	public static function presence_record( array $args, array $ctx ) {
+		$bridge = self::bridge( $ctx );
+		if ( '' === $bridge ) {
+			return self::no_number();
+		}
+		$gid = BizCity_CRM_Group_Secretary::clean_gid( (string) ( $args['thread_id'] ?? '' ) );
+		if ( '' === $gid || 1 !== BizCity_CRM_Group_Secretary::tier( $bridge, $gid, (string) ( $args['requester_uid'] ?? '' ) ) ) {
+			$r = new WP_Error( 'group_presence_denied', 'Chỉ trợ lý của chủ số mới ghi được cờ này.', array( 'status' => 403 ) );
+			self::trace( 'group.presence.record', $bridge, $args, $r );
+			return self::err( $r );
+		}
+		$r = BizCity_CRM_Group_Secretary::record_presence( $bridge, $gid, ! empty( $args['owner_in'] ) );
+		return $r + array( 'minutes' => BizCity_CRM_Group_Secretary::minutes_auto( $bridge, $gid ) ); // PHASE-0.153 Q153-3 — the cell counts this group for the day minutes without "Theo dõi"
 	}
 
 	/* ── handlers ──────────────────────────────────────────────────────── */

@@ -435,6 +435,101 @@ final class BizCity_Zalo_Personal_Knowledge_Capture {
 	}
 
 	/**
+	 * [2026-11-17 10:04 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V4b (Q153-2) — a customer's "lưu giúp" in a 1-1 chat: the files go into the customer's space
+	 * (`contact:<identity_uuid>`) in the Kho of the number's owner, through the same cron capture as group files. The space quota (10 tệp / 20 MB) is
+	 * checked per file in capture(). No receipt (origin `contact_capture`): the assistant is already answering the customer in the chat.
+	 *
+	 * @param array $files   same shape as from_group_files()
+	 * @param array $contact {uuid, label}
+	 * @return array { ok:bool, code:string, queued?:int, duplicate?:bool }
+	 */
+	public static function from_contact_files( string $bridge_id, array $files, array $contact ): array {
+		if ( self::in_diagnostics_cli() ) {
+			return array( 'ok' => false, 'code' => 'cli_isolated' );
+		}
+		$bridge_id = sanitize_text_field( $bridge_id );
+		$space     = class_exists( 'BizCity_Vault_Spaces' ) ? BizCity_Vault_Spaces::id( 'contact:' . (string) ( $contact['uuid'] ?? '' ) ) : '';
+		if ( '' === $bridge_id || '' === $space ) {
+			return array( 'ok' => false, 'code' => 'invalid_param' );
+		}
+		if ( ! class_exists( 'BizCity_Zalo_Mapping_Repo' ) ) {
+			return array( 'ok' => false, 'code' => 'mapping_unavailable' );
+		}
+		$db_account = BizCity_Zalo_Mapping_Repo::find_account_by_bridge_id( 'personal', $bridge_id );
+		if ( ! is_array( $db_account ) ) {
+			return array( 'ok' => false, 'code' => 'account_not_found' );
+		}
+		$job    = self::contact_job( $bridge_id, $db_account, $files, $space );
+		$reason = self::owner_capture_skip_reason( array(
+			'enabled'       => (bool) apply_filters( self::FILTER_ENABLED, true, $bridge_id ),
+			'provider'      => class_exists( 'BizCity_Zalo_Account_Flags' ) ? BizCity_Zalo_Account_Flags::provider( $bridge_id ) : '',
+			'owner_user_id' => (int) $job['owner_user_id'],
+			'has_items'     => ! empty( $job['items'] ),
+		) );
+		if ( '' !== $reason ) {
+			self::log( 'contact_capture_skipped', array( 'account_id' => $bridge_id, 'reason' => $reason ) );
+			return array( 'ok' => false, 'code' => $reason );
+		}
+		$already   = (bool) wp_next_scheduled( self::CRON_HOOK, array( $job ) );
+		$scheduled = $already ? true : wp_schedule_single_event( time(), self::CRON_HOOK, array( $job ) );
+		if ( false === $scheduled ) {
+			self::log( 'knowledge_capture_schedule_failed', array( 'account_id' => $bridge_id, 'origin' => 'contact_capture', 'items' => count( $job['items'] ) ), 'error' );
+			return array( 'ok' => false, 'code' => 'schedule_failed' );
+		}
+		if ( ! $already ) {
+			self::log( 'knowledge_capture_queued', array( 'account_id' => $bridge_id, 'origin' => 'contact_capture', 'items' => count( $job['items'] ), 'thread' => 'user' ) );
+			if ( function_exists( 'spawn_cron' ) ) {
+				spawn_cron(); // Zalo CDN URLs expire
+			}
+		}
+		return array( 'ok' => true, 'code' => '', 'queued' => count( $job['items'] ), 'duplicate' => $already );
+	}
+
+	/** PHASE-0.153 V4b — the cron job of a customer's files (pure, testable). Every item carries the customer's space. */
+	public static function contact_job( string $bridge_id, array $db_account, array $files, string $space ): array {
+		$blog  = function_exists( 'get_current_blog_id' ) ? (int) get_current_blog_id() : 0;
+		$items = array();
+		foreach ( array_values( $files ) as $i => $fl ) {
+			$url = trim( (string) ( $fl['url'] ?? '' ) );
+			$att = (int) ( $fl['crm_attachment_id'] ?? 0 );
+			if ( '' === $url || ! preg_match( '#^https?://#i', $url ) || $att <= 0 ) {
+				continue;
+			}
+			$kind  = 'image' === (string) ( $fl['kind'] ?? '' ) ? 'image' : 'file';
+			$a     = array( 'kind' => $kind, 'url' => $url, 'source_url' => $url );
+			$fname = sanitize_text_field( (string) ( $fl['file_name'] ?? '' ) );
+			if ( '' !== $fname ) {
+				$a['file_name'] = $fname;
+			}
+			$items[] = array(
+				'kind'              => $kind,
+				'attachment'        => $a,
+				'raw_index'         => $i,
+				'card'              => array( 'tags' => array() ),
+				'item_key'          => 'cc:' . $blog . ':' . $att,
+				'crm_attachment_id' => $att,
+				'space'             => $space,
+			);
+		}
+		$owner = (int) ( $db_account['owner_user_id'] ?? 0 );
+		return array(
+			'blog_id'        => $blog,
+			'bridge_id'      => $bridge_id,
+			'owner_user_id'  => $owner,
+			'label'          => (string) ( $db_account['label'] ?? '' ),
+			'day_key'        => function_exists( 'wp_date' ) ? wp_date( 'Ymd', time() ) : gmdate( 'Ymd' ),
+			'dedupe_key'     => 'cc:' . $blog . ':' . substr( md5( $space ), 0, 12 ),
+			'origin'         => 'contact_capture',
+			'thread_kind'    => 'user',
+			'crm_message_id' => (int) ( $files[0]['crm_message_id'] ?? 0 ),
+			'actor_user_id'  => $owner,
+			'role'           => 'owner',
+			'trigger'        => 'ask',
+			'items'          => $items,
+		);
+	}
+
+	/**
 	 * Wave 2 (W2-4): who receives an owner-capture@1.1 item. The owner by hash (or `role: owner` with no staff match), or an
 	 * active staff member of THIS number whose `notebook` mode + matching capture switch are on. null = refuse (403).
 	 *
@@ -544,6 +639,28 @@ final class BizCity_Zalo_Personal_Knowledge_Capture {
 		return $vault_ok && ( $vault_first || $only_text );
 	}
 
+	/**
+	 * [2026-11-15 10:50 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V2 — the space (ngăn) of a captured item: its own `space` when valid (a customer's
+	 * "lưu giúp" ⇒ contact:<uuid>), else the Zalo group it came from (group:<gid>), else '' (a 1-1 owner / staff file: the Kho's own folders). Pure.
+	 */
+	public static function space_of( array $item ): string {
+		if ( ! class_exists( 'BizCity_Vault_Spaces' ) ) {
+			return '';
+		}
+		$own = BizCity_Vault_Spaces::id( (string) ( $item['space'] ?? '' ) );
+		if ( '' !== $own ) {
+			return $own;
+		}
+		$gid = is_array( $item['group'] ?? null ) ? trim( (string) ( $item['group']['gid'] ?? '' ) ) : '';
+		return '' !== $gid ? BizCity_Vault_Spaces::id( 'group:' . $gid ) : '';
+	}
+
+	/** The row's tags plus the space tag (sp-g-… / sp-c-…) when the item has a space. Pure. */
+	public static function tags_with_space( array $tags, string $space ): array {
+		$tag = ( '' !== $space && class_exists( 'BizCity_Vault_Spaces' ) ) ? BizCity_Vault_Spaces::tag( $space ) : '';
+		return '' === $tag ? $tags : array_values( array_unique( array_merge( array( $tag ), $tags ) ) );
+	}
+
 	// ── internals ────────────────────────────────────────────────────────
 
 	private static function capture( array $job, string $bridge_id ): void {
@@ -576,7 +693,8 @@ final class BizCity_Zalo_Personal_Knowledge_Capture {
 		// [2026-10-12 01:05 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.100 S100-L15 — per-item journal metadata, keyed
 		// by its PUSH POSITION in $items (0..n-1 — the same index capture_batch()'s succeeded[]/queued[] use),
 		// not by `$i` (the loop key, which skips a gap when an earlier item is dropped).
-		$card_meta = array();
+		$card_meta    = array();
+		$quota_failed = array(); // PHASE-0.153 V2 — files refused by a full space
 		foreach ( (array) ( $job['items'] ?? array() ) as $i => $item ) {
 			if ( ! is_array( $item ) ) {
 				continue;
@@ -604,16 +722,30 @@ final class BizCity_Zalo_Personal_Knowledge_Capture {
 			} else {
 				continue;
 			}
+			// [2026-11-15 10:50 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V2 — the space (ngăn) a file belongs to: the item's own `space` (a customer's
+			// "lưu giúp", contact:<uuid>), else its Zalo group (group:<gid>). A file over the space's quota is not kept (10 tệp / 20 MB a customer, Q153-2).
+			$space = self::space_of( $item );
+			if ( '' !== $space && isset( $row['attachment'] ) && class_exists( 'BizCity_Vault_Spaces' ) ) {
+				$q = BizCity_Vault_Spaces::check_quota( $space, (int) ( $item['attachment']['size'] ?? 0 ), $owner );
+				if ( is_wp_error( $q ) ) {
+					$quota_failed[] = array( 'index' => -1, 'kind' => (string) ( $item['kind'] ?? 'file' ), 'code' => 'space_quota_full', 'error' => $q->get_error_message(), 'file_name' => (string) ( $item['attachment']['file_name'] ?? '' ) );
+					continue;
+				}
+			}
 			$card_meta[ count( $items ) ] = array(
 				'card'             => is_array( $item['card'] ?? null ) ? $item['card'] : array(),
 				'idempotency_key'  => $mid,
 				'kind_hint'        => (string) ( $item['kind'] ?? 'file' ),
 				'group'            => is_array( $item['group'] ?? null ) ? $item['group'] : null,
 				'crm_attachment_id'=> (int) ( $item['crm_attachment_id'] ?? 0 ),
+				'space'            => $space, // PHASE-0.153 V2
 			);
 			$items[] = $row;
 		}
 		if ( empty( $items ) ) {
+			if ( $quota_failed ) { // PHASE-0.153 V2 — every file was refused by a full space: the sender still gets the "chưa lưu được" receipt
+				self::send_receipt( $job, $owner, $bridge_id, array( 'failed' => $quota_failed ) );
+			}
 			return;
 		}
 
@@ -662,6 +794,9 @@ final class BizCity_Zalo_Personal_Knowledge_Capture {
 		// [2026-10-23 09:37 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.128 (chủ 21:3x: biên nhận "Đã lưu an toàn … TL-7249" KHÔNG kèm link Bản đồ não) — the receipt went out BEFORE the
 		// journal rows existed: `map_link_for()` / `register_rows_for()` look the new file's row up by its TL- code and found nothing ⇒ no map link, no register rows.
 		// Now: index first (K4), then the receipt. A failing index never blocks the receipt (the original file is kept either way — R-JN-2).
+		if ( $quota_failed && is_array( $res ) ) { // PHASE-0.153 V2 — files refused by a full space join the receipt's "chưa lưu được"
+			$res['failed'] = array_merge( (array) ( $res['failed'] ?? array() ), $quota_failed );
+		}
 		try {
 			self::index_captured_items( $job, $owner, $bridge_id, $day_key, $card_meta, $res );
 		} catch ( \Throwable $e ) {
@@ -765,7 +900,7 @@ final class BizCity_Zalo_Personal_Knowledge_Capture {
 				'learning'        => array( 'level' => $attach_id > 0 || (int) ( $r['kg_source_id'] ?? 0 ) > 0 ? 'L1' : 'L0', 'text_ready' => (int) ( $r['kg_source_id'] ?? 0 ) > 0 ),
 				'doc_date'        => $card['doc_date'] ?? null,
 				'subject'         => is_array( $card['subject'] ?? null ) ? $card['subject'] : array(),
-				'tags'            => (array) ( $card['tags'] ?? array() ),
+				'tags'            => self::tags_with_space( (array) ( $card['tags'] ?? array() ), (string) ( $meta['space'] ?? '' ) ), // PHASE-0.153 V2
 				'card'            => is_array( $card['fields'] ?? null ) ? $card['fields'] : array(),
 				'confidence'      => isset( $card['confidence'] ) ? (float) $card['confidence'] : ( empty( $card ) ? 0.0 : 1.0 ),
 				'original'        => $original,

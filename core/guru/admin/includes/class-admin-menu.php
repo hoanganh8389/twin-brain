@@ -67,9 +67,8 @@ class BizCity_Knowledge_Admin_Menu {
         add_action('wp_ajax_bizcity_knowledge_promote_source', [$this, 'ajax_promote_source']);
         // [2026-09-30 Claude Opus 5.5] CORE-REDUCTION R14f — test_openrouter, reprocess_document, list_sources and tavily_search AJAX had no caller; removed.
 
-        // PHASE 0.34.2 — Character ↔ Notebook attach/detach (1:N via kg_notebooks.character_id)
-        add_action('admin_post_bizcity_character_notebook_attach', [$this, 'admin_post_character_notebook_attach']);
-        add_action('admin_post_bizcity_character_notebook_detach', [$this, 'admin_post_character_notebook_detach']);
+        // [2026-11-15 12:54 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 G (Q151-12) — Character ↔ Notebook attach/detach (PHASE 0.34.2) removed: a Guru answers from the Kho tri thức folders
+        // chosen in its "Kho tri thức" tab (PUT bizcity-vault/v1/guru/{id}/folders).
 
         // Sprint 0.18.A.3 — inline Quick FAQ auto-save (per-row).
         add_action( 'wp_ajax_bizcity_knowledge_quick_faq_upsert', [ $this, 'ajax_quick_faq_upsert' ] );
@@ -847,6 +846,8 @@ class BizCity_Knowledge_Admin_Menu {
                         (string) $memory->record_id,
                         array( 'blog_id' => get_current_blog_id() )
                     );
+                    // [2026-11-15 07:38 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 M3 — reads come from the Vault .md now: drop it there too.
+                    if ( $deleted ) { do_action( 'bizcity_memory_mirror_delete', 'user', $memory_id, array( 'blog_id' => get_current_blog_id(), 'record_id' => (string) $memory->record_id, 'identity_uuid' => (string) ( $memory->identity_uuid ?? '' ) ) ); }
                     break;
                 }
             }
@@ -1905,7 +1906,7 @@ class BizCity_Knowledge_Admin_Menu {
         }
         // [2026-10-25 Johnny Chu - Chu Hoàng Anh] PHASE-0.126 R126-TF (R-TABLE-FREEZE) — Guru knowledge no longer goes through bizcity_knowledge_chunks (frozen: no install, no write; rows stay readable):
         // attach a Vault / notebook to the Guru instead. The old upload / crawl body that wrote chunks is removed (git history).
-        wp_send_json_error( [ 'code' => 'guru_knowledge_moved_to_vault', 'message' => 'Kiến thức của Guru nay nằm trong Vault: hãy gắn notebook cho Guru (mục Notebook đính kèm).' ] );
+        wp_send_json_error( [ 'code' => 'guru_knowledge_moved_to_vault', 'message' => 'Kiến thức của Guru nay nằm trong Vault: hãy chọn thư mục Kho tri thức cho Guru (tab "Kho tri thức").' ] );
     }
 
     /**
@@ -1954,7 +1955,7 @@ class BizCity_Knowledge_Admin_Menu {
         }
         // [2026-10-25 Johnny Chu - Chu Hoàng Anh] PHASE-0.126 R126-TF (R-TABLE-FREEZE) — Guru knowledge no longer goes through bizcity_knowledge_chunks (frozen: no install, no write; rows stay readable):
         // attach a Vault / notebook to the Guru instead. The old upload / crawl body that wrote chunks is removed (git history).
-        wp_send_json_error( [ 'code' => 'guru_knowledge_moved_to_vault', 'message' => 'Kiến thức của Guru nay nằm trong Vault: hãy gắn notebook cho Guru (mục Notebook đính kèm).' ] );
+        wp_send_json_error( [ 'code' => 'guru_knowledge_moved_to_vault', 'message' => 'Kiến thức của Guru nay nằm trong Vault: hãy chọn thư mục Kho tri thức cho Guru (tab "Kho tri thức").' ] );
     }
 
     /**
@@ -1968,7 +1969,7 @@ class BizCity_Knowledge_Admin_Menu {
         }
         // [2026-10-25 Johnny Chu - Chu Hoàng Anh] PHASE-0.126 R126-TF (R-TABLE-FREEZE) — Guru knowledge no longer goes through bizcity_knowledge_chunks (frozen: no install, no write; rows stay readable):
         // attach a Vault / notebook to the Guru instead. The old upload / crawl body that wrote chunks is removed (git history).
-        wp_send_json_error( [ 'code' => 'guru_knowledge_moved_to_vault', 'message' => 'Kiến thức của Guru nay nằm trong Vault: hãy gắn notebook cho Guru (mục Notebook đính kèm).' ] );
+        wp_send_json_error( [ 'code' => 'guru_knowledge_moved_to_vault', 'message' => 'Kiến thức của Guru nay nằm trong Vault: hãy chọn thư mục Kho tri thức cho Guru (tab "Kho tri thức").' ] );
     }
 
     /**
@@ -2516,49 +2517,5 @@ class BizCity_Knowledge_Admin_Menu {
         ]);
     }
 
-    /**
-     * PHASE 0.34.2 — Attach one or more notebooks to a character (1:N via kg_notebooks.character_id).
-     * Source: character-edit.php Notebooks tab form.
-     */
-    public function admin_post_character_notebook_attach() {
-        $cid = isset( $_POST['character_id'] ) ? (int) $_POST['character_id'] : 0;
-        if ( ! $cid || ! self::can_manage() ) {
-            wp_die( 'forbidden' );
-        }
-        check_admin_referer( 'bk_char_nb_' . $cid );
-
-        $ids = isset( $_POST['notebook_ids'] ) ? (array) $_POST['notebook_ids'] : [];
-        $ids = array_filter( array_map( 'intval', $ids ) );
-
-        if ( $ids && class_exists( 'BizCity_KG_Database' ) ) {
-            global $wpdb;
-            $tbl = BizCity_KG_Database::instance()->tbl_notebooks();
-            foreach ( $ids as $nb_id ) {
-                $wpdb->update( $tbl, [ 'character_id' => $cid ], [ 'id' => $nb_id ] );
-            }
-        }
-        wp_safe_redirect( wp_get_referer() ?: admin_url() );
-        exit;
-    }
-
-    /**
-     * PHASE 0.34.2 — Detach a single notebook from a character (sets character_id NULL).
-     */
-    public function admin_post_character_notebook_detach() {
-        $cid = isset( $_POST['character_id'] ) ? (int) $_POST['character_id'] : 0;
-        $nb  = isset( $_POST['notebook_id'] )  ? (int) $_POST['notebook_id']  : 0;
-        if ( ! $cid || ! $nb || ! self::can_manage() ) {
-            wp_die( 'forbidden' );
-        }
-        check_admin_referer( 'bk_char_nb_' . $cid );
-
-        if ( class_exists( 'BizCity_KG_Database' ) ) {
-            global $wpdb;
-            $tbl = BizCity_KG_Database::instance()->tbl_notebooks();
-            $wpdb->update( $tbl, [ 'character_id' => null ], [ 'id' => $nb, 'character_id' => $cid ] );
-        }
-        wp_safe_redirect( wp_get_referer() ?: admin_url() );
-        exit;
-    }
 }
 

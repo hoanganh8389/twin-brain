@@ -140,7 +140,7 @@ final class BizCity_Context_Producers {
 		if ( null === $def ) {
 			return new WP_Error( 'context_producer_unknown', 'Nguồn dữ liệu chưa đăng ký: ' . $id );
 		}
-		$owner = self::owner_user_id();
+		$owner = self::kho_owner();
 		if ( $owner <= 0 ) {
 			return new WP_Error( 'context_producer_no_owner', 'Site chưa có chủ để giữ sổ.' );
 		}
@@ -292,7 +292,7 @@ final class BizCity_Context_Producers {
 	 */
 	public static function days( string $id, array $opt = array() ): array {
 		$def   = self::get( $id );
-		$owner = self::owner_user_id();
+		$owner = self::kho_owner();
 		if ( null === $def || $owner <= 0 || ! class_exists( 'BizCity_Journal_Index' ) ) {
 			return array( 'days' => array(), 'has_more' => false );
 		}
@@ -351,7 +351,7 @@ final class BizCity_Context_Producers {
 		}
 		$items = array();
 		if ( $range[0] === $range[1] && ! empty( $list['days'][0]['entry_id'] ) && class_exists( 'BizCity_Journal_Index' ) ) {
-			$row   = BizCity_Journal_Index::get( (int) $list['days'][0]['entry_id'], self::owner_user_id() );
+			$row   = BizCity_Journal_Index::get( (int) $list['days'][0]['entry_id'], self::kho_owner() );
 			$items = array_slice( (array) ( $row['card']['items'] ?? array() ), 0, 10 );
 		}
 		return array(
@@ -554,7 +554,24 @@ final class BizCity_Context_Producers {
 
 	/* ── helpers ──────────────────────────────────────────────────────────────── */
 
-	/** The site owner who holds the notebooks: option `bizcity_context_owner_user_id`, else the first administrator. */
+	/**
+	 * [2026-11-15 10:55 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V1c — whose Sổ a producer writes / reads: the acting Kho owner (BizCity_Vault_Owner:
+	 * a turn ⇒ the number's owner, web ⇒ the user with an assistant), else the legacy site owner below. Cron has no user ⇒ the legacy owner, as before.
+	 */
+	public static function kho_owner(): int {
+		if ( class_exists( 'BizCity_Vault_Owner' ) ) {
+			$o = BizCity_Vault_Owner::current();
+			if ( $o > 0 ) {
+				return $o;
+			}
+		}
+		return self::owner_user_id();
+	}
+
+	/**
+	 * The LEGACY site owner (before PHASE-0.153 each user id had no Kho of its own): option `bizcity_context_owner_user_id`, else the first
+	 * administrator. Since 0.153 it only names the user id that keeps the pre-0.153 paths (BizCity_Vault_Owner::legacy) — data goes to kho_owner().
+	 */
 	public static function owner_user_id(): int {
 		$o = (int) ( function_exists( 'get_option' ) ? get_option( self::OWNER_OPTION, 0 ) : 0 );
 		if ( $o > 0 ) {

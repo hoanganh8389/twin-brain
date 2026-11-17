@@ -113,6 +113,55 @@ final class BizCity_Brain_Vault_Store {
 		return '' === $root ? '' : $root . $ns . '/';
 	}
 
+	/** [2026-11-15 09:59 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V1 — namespaces kept PER USER ID (the rest is addressed by journal ref, already per user). */
+	const USER_NAMESPACES = array( 'library', 'memory', 'spaces' );
+
+	/**
+	 * [2026-11-15 09:59 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V1 (doc 00 §4.1b) — the directory of one per-user namespace: <root>/{blog}/u{id}/<ns>/.
+	 * The legacy site owner (BizCity_Vault_Owner::is_legacy) keeps the pre-0.153 place instead (Q153-8, nothing moved): `memory` ⇒ <root>/{blog}/memory/,
+	 * `library` ⇒ the skills library folder (uploads/bizcity-skills/{blog}/). '' for an unknown namespace, a user id ≤ 0 or no root.
+	 */
+	public static function user_dir( string $ns, int $user_id ): string {
+		if ( ! in_array( $ns, self::USER_NAMESPACES, true ) || $user_id <= 0 ) {
+			return '';
+		}
+		if ( class_exists( 'BizCity_Vault_Owner' ) && BizCity_Vault_Owner::is_legacy( $user_id ) ) {
+			if ( 'memory' === $ns ) {
+				return self::namespace_dir( 'memory' );
+			}
+			if ( 'library' === $ns ) {
+				return self::namespace_dir( 'skills' );
+			}
+		}
+		$root = self::root();
+		return '' === $root ? '' : $root . 'u' . $user_id . '/' . $ns . '/';
+	}
+
+	/** user_dir() created with the root deny files (the legacy library folder is returned as is, like ensure('skills')). */
+	public static function ensure_user( string $ns, int $user_id ): string {
+		$dir = self::user_dir( $ns, $user_id );
+		if ( '' === $dir || $dir === self::namespace_dir( 'skills' ) ) {
+			return $dir;
+		}
+		self::$last_failure = '';
+		if ( ! is_dir( $dir ) ) {
+			$made = function_exists( 'wp_mkdir_p' ) ? (bool) wp_mkdir_p( $dir ) : false;
+			if ( ! $made && ! is_dir( $dir ) ) {
+				@mkdir( $dir, 0755, true ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir, WordPress.PHP.NoSilencedErrors.Discouraged
+			}
+			if ( ! is_dir( $dir ) ) {
+				self::$last_failure = 'mkdir_failed';
+				return '';
+			}
+		}
+		if ( ! is_writable( $dir ) ) {
+			self::$last_failure = 'not_writable';
+			return '';
+		}
+		self::ensure( 'memory' ); // writes the deny files of the blog root (index.php / .htaccess / web.config) once
+		return $dir;
+	}
+
 	/** The namespace a journal row's representations live in. Pure. */
 	public static function namespace_of( string $kind, string $mime = '' ): string {
 		if ( 'common.photo' === $kind || 'media.image.output' === $kind || 0 === strpos( $mime, 'image/' ) ) {

@@ -42,6 +42,14 @@ final class BizCity_MCP_Action_Support {
 			wp_set_current_user( $uid );
 		}
 		try {
+			// [2026-11-15 09:59 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V1 — a turn of a Zalo number acts on the Kho of the user id that OWNS that
+			// number (staff included: they work in their owner's Kho); no account / unknown number ⇒ the principal's own Kho, as before.
+			$account = (string) ( $ctx['account_id'] ?? '' );
+			if ( '' !== $account && class_exists( 'BizCity_Vault_Owner' ) ) {
+				return BizCity_Vault_Owner::with_account( $account, static function () use ( $fn, $uid ) {
+					return $fn( $uid );
+				} );
+			}
 			return $fn( $uid );
 		} finally {
 			if ( $previous !== $uid ) {

@@ -120,18 +120,11 @@ if ($id) {
                 <span class="bk-tab-count"><?php echo count($quick_knowledge); ?></span>
             </button>
             <?php if ( ! $is_new ): ?>
-            <button type="button" class="bk-tab-btn" data-tab="notebooks">
-                <span class="dashicons dashicons-book-alt"></span>
-                Notebooks
-                <span class="bk-tab-count" id="bk-notebooks-count">
-                    <?php
-                    if ( class_exists( 'BizCity_KG_Database' ) ) {
-                        global $wpdb;
-                        $tbl = BizCity_KG_Database::instance()->tbl_notebooks();
-                        echo (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$tbl} WHERE character_id = %d", (int) $id ) );
-                    } else { echo 0; }
-                    ?>
-                </span>
+            <!-- [2026-11-15 12:54 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 G (Q151-12, chủ: "bỏ luôn notebook, chỉ tập trung vào vault") — tab Notebooks → Kho tri thức -->
+            <button type="button" class="bk-tab-btn" data-tab="vault">
+                <span class="dashicons dashicons-portfolio"></span>
+                Kho tri thức
+                <span class="bk-tab-count"><?php echo class_exists( 'BizCity_Twin_Vault' ) ? count( BizCity_Twin_Vault::folders_for_guru( (int) $id ) ) : 0; ?></span>
             </button>
             <?php endif; ?>
             <?php if ( ! $is_new ): ?>
@@ -466,194 +459,54 @@ if ($id) {
             </div>
         </div>
         
-        <!-- Tab: Notebooks (PHASE 0.34.2 — Guru ↔ Notebook attach) -->
-        <?php if ( ! $is_new && class_exists( 'BizCity_KG_Database' ) ):
-            global $wpdb;
-            $kgdb        = BizCity_KG_Database::instance();
-            $tbl_nb      = $kgdb->tbl_notebooks();
-            // Schema 0.6+: chunks live in bizcity_kg_passages (with embed_status). Fallback for older method names.
-            if ( method_exists( $kgdb, 'tbl_source_chunks' ) ) {
-                $tbl_chunks = $kgdb->tbl_source_chunks();
-            } elseif ( method_exists( $kgdb, 'tbl_passages' ) ) {
-                $tbl_chunks = $kgdb->tbl_passages();
-            } else {
-                $tbl_chunks = $wpdb->prefix . 'bizcity_kg_passages';
-            }
-
-            // Per PHASE-0-RULE-VECTOR-FILE-STORE v2.0 (FILESTORE-ONLY): readiness signal đọc trực tiếp
-            // từ header file `.bin` (single source of truth, standalone, no DB embedding column).
-            // Cột `embedding LONGTEXT` + `embed_status` deprecated, sẽ DROP ở Wave 2 §C-6.
-            $attached = $wpdb->get_results( $wpdb->prepare(
-                "SELECT n.id, n.uuid, n.name, n.description, n.owner_id, n.updated_at,
-                        (SELECT COUNT(*) FROM {$tbl_chunks} c WHERE c.notebook_id = n.id) AS chunks_total
-                   FROM {$tbl_nb} n
-                  WHERE n.character_id = %d
-                  ORDER BY n.updated_at DESC",
-                (int) $id
-            ), ARRAY_A );
-
-            // Resolve `chunks_ready` từ header `.bin` (truthful, standalone từ filestore).
-            if ( ! empty( $attached ) && function_exists( 'bizcity_kg_vector_bin_path' )
-                 && class_exists( 'BizCity_KG_Vector_File_Store' ) ) {
-                $vfs = BizCity_KG_Vector_File_Store::instance();
-                foreach ( $attached as $idx => $row ) {
-                    $uuid = strtolower( (string) ( $row['uuid'] ?? '' ) );
-                    if ( '' === $uuid ) {
-                        $attached[ $idx ]['chunks_ready'] = 0;
-                        continue;
-                    }
-                    $abs = bizcity_kg_vector_bin_path( 'notebooks', $uuid );
-                    $hdr = $abs ? $vfs->header_validate( $abs ) : null;
-                    $attached[ $idx ]['chunks_ready'] = ( $hdr && ! is_wp_error( $hdr ) )
-                        ? (int) $hdr['count']
-                        : 0;
-                }
-            } else {
-                foreach ( $attached as $idx => $row ) {
-                    $attached[ $idx ]['chunks_ready'] = 0;
-                }
-            }
-
-            $available = $wpdb->get_results( $wpdb->prepare(
-                "SELECT id, name, owner_id, character_id, updated_at
-                   FROM {$tbl_nb}
-                  WHERE ( character_id IS NULL OR character_id = 0 OR character_id != %d )
-                    AND ( owner_id = %d OR owner_id IS NULL OR %d = 1 )
-                  ORDER BY updated_at DESC
-                  LIMIT 200",
-                (int) $id, (int) get_current_user_id(), (int) ( current_user_can( 'manage_options' ) ? 1 : 0 )
-            ), ARRAY_A );
-
-            $nb_nonce = wp_create_nonce( 'bk_char_nb_' . (int) $id );
+        <!-- Tab: Kho tri thức — [2026-11-15 12:54 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 G (Q151-12, chủ: "bỏ luôn notebook, chỉ tập trung vào vault"): the Guru answers from the folders ticked here + its instruction.
+             Same writer as Guru Studio (PUT bizcity-vault/v1/guru/{id}/folders); customers only ever read the PUBLIC folders. -->
+        <?php if ( ! $is_new && class_exists( 'BizCity_Twin_Vault' ) ):
+            $bk_vault_mine = BizCity_Twin_Vault::folders_for_guru( (int) $id );
+            $bk_vault_access = array( 'public' => 'Công khai (khách đọc được)', 'staff' => 'Chủ + nhân sự', 'owner' => 'Chỉ chủ' );
         ?>
-        <div class="bk-tab-content" id="tab-notebooks">
+        <div class="bk-tab-content" id="tab-vault">
             <div class="bk-tab-inner">
-                <h2>Notebooks (Knowledge Graph) <span class="bk-helper-tip">— gắn nhiều notebook làm nguồn kiến thức cho Connector</span></h2>
+                <h2>Kho tri thức <span class="bk-helper-tip">— chọn thư mục Guru dùng để trả lời</span></h2>
                 <p class="description">
-                    Mỗi notebook chứa documents/passages đã được embed vào KG. Khi Connector này được gọi (auto reply, Twin chat),
-                    hệ thống sẽ pull ưu tiên từ các notebook đính kèm dưới đây trước khi mở rộng sang KG chung.
+                    Guru trả lời theo <strong>hướng dẫn (instruction)</strong> ở tab Chung và tài liệu trong các thư mục được chọn dưới đây.
+                    Khách trên Zalo / Facebook chỉ đọc được thư mục <strong>Công khai</strong>; thư mục nội bộ chỉ dùng khi chủ hoặc nhân sự hỏi.
                 </p>
-                <div id="bk-nb-notice" style="display:none;padding:8px 12px;margin-bottom:12px;border-radius:3px;font-weight:500"></div>
-
-                <h3 style="margin-top:24px">Đã gắn (<?php echo count( $attached ); ?>)</h3>
-                <?php if ( empty( $attached ) ): ?>
-                    <p style="padding:16px;background:#f8fafc;border:1px solid #f1f5f9;color:#64748b">Chưa có notebook nào gắn vào Connector này.</p>
-                <?php else: ?>
-                <table class="widefat striped" style="margin-bottom:16px">
-                    <thead>
-                        <tr><th>#</th><th>Tên notebook</th><th>Chunks</th><th>Updated</th><th></th></tr>
-                    </thead>
+                <div id="bk-vault-notice" style="display:none;padding:8px 12px;margin-bottom:12px;border-radius:3px;font-weight:500"></div>
+                <table class="widefat striped" style="margin:12px 0;max-width:720px">
+                    <thead><tr><th style="width:40px"></th><th>Thư mục</th><th>Ai đọc được</th></tr></thead>
                     <tbody>
-                    <?php foreach ( $attached as $nb ): ?>
-                        <tr id="bk-nb-row-<?php echo (int) $nb['id']; ?>">
-                            <td><?php echo (int) $nb['id']; ?></td>
-                            <td>
-                                <strong><?php echo esc_html( $nb['name'] ?: 'Untitled' ); ?></strong>
-                                <?php if ( ! empty( $nb['description'] ) ): ?>
-                                    <div style="color:#64748b;font-size:12px"><?php echo esc_html( wp_trim_words( $nb['description'], 20 ) ); ?></div>
-                                <?php endif; ?>
-                            </td>
-                            <td><span title="ready/total"><?php echo (int) $nb['chunks_ready']; ?>/<?php echo (int) $nb['chunks_total']; ?></span></td>
-                            <td><?php echo esc_html( $nb['updated_at'] ); ?></td>
-                            <td>
-                                <button type="button" class="button button-link-delete bk-nb-detach"
-                                    data-nb="<?php echo (int) $nb['id']; ?>"
-                                    data-cid="<?php echo (int) $id; ?>"
-                                    data-nonce="<?php echo esc_attr( $nb_nonce ); ?>">Gỡ</button>
-                            </td>
+                    <?php foreach ( (array) BizCity_Twin_Vault::folders() as $bk_f ): $bk_n = (string) $bk_f['n']; ?>
+                        <tr>
+                            <td><input type="checkbox" class="bk-vault-folder" value="<?php echo esc_attr( $bk_n ); ?>" <?php checked( in_array( $bk_n, $bk_vault_mine, true ) ); ?>></td>
+                            <td><?php echo esc_html( trim( (string) ( $bk_f['icon'] ?? '' ) . ' ' . $bk_n . ' · ' . (string) ( $bk_f['label'] ?? '' ) ) ); ?></td>
+                            <td><?php echo esc_html( $bk_vault_access[ (string) ( $bk_f['access'] ?? 'staff' ) ] ?? (string) ( $bk_f['access'] ?? '' ) ); ?></td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
                 </table>
-                <?php endif; ?>
-
-                <h3 style="margin-top:24px">Gắn thêm notebook</h3>
-                <?php if ( empty( $available ) ): ?>
-                    <p style="color:#64748b">Không có notebook nào sẵn sàng để gắn.</p>
-                <?php else: ?>
-                <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
-                    <select id="bk-nb-select" multiple size="8" style="min-width:360px">
-                        <?php foreach ( $available as $nb ): ?>
-                            <option value="<?php echo (int) $nb['id']; ?>">
-                                #<?php echo (int) $nb['id']; ?> · <?php echo esc_html( $nb['name'] ?: 'Untitled' ); ?>
-                                <?php if ( ! empty( $nb['character_id'] ) ) echo ' (đang gắn G' . (int) $nb['character_id'] . ')'; ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                    <div style="display:flex;flex-direction:column;gap:8px">
-                        <button type="button" class="button button-primary" id="bk-nb-attach-btn"
-                            data-cid="<?php echo (int) $id; ?>"
-                            data-nonce="<?php echo esc_attr( $nb_nonce ); ?>">+ Attach selected</button>
-                        <span class="description" style="color:#64748b;font-size:12px">Giữ Ctrl/Cmd để chọn nhiều.</span>
-                    </div>
-                </div>
-                <?php endif; ?>
-
+                <button type="button" class="button button-primary" id="bk-vault-save" data-cid="<?php echo (int) $id; ?>">Lưu thư mục</button>
+                <p class="description" style="margin-top:16px">
+                    Trí nhớ của Guru về từng người được lưu trong Kho tri thức › 05 Ghi chú › <code>tri-nho</code> (chỉ chủ xem).
+                </p>
                 <script>
                 (function(){
-                    var adminPost = <?php echo wp_json_encode( admin_url( 'admin-post.php' ) ); ?>;
-
-                    function nbNotice(msg, ok){
-                        var el = document.getElementById('bk-nb-notice');
-                        if(!el) return;
-                        el.textContent = msg;
-                        el.style.display = 'block';
-                        el.style.background = ok ? '#d1fae5' : '#fee2e2';
-                        el.style.color      = ok ? '#065f46' : '#991b1b';
+                    var btn = document.getElementById('bk-vault-save');
+                    if(!btn) return;
+                    var url = <?php echo wp_json_encode( rest_url( 'bizcity-vault/v1/guru/' . (int) $id . '/folders' ) ); ?>;
+                    var nonce = <?php echo wp_json_encode( wp_create_nonce( 'wp_rest' ) ); ?>;
+                    function notice(msg, ok){
+                        var el = document.getElementById('bk-vault-notice');
+                        el.textContent = msg; el.style.display = 'block';
+                        el.style.background = ok ? '#d1fae5' : '#fee2e2'; el.style.color = ok ? '#065f46' : '#991b1b';
                     }
-
-                    function nbPost(body, onOk){
-                        var fd = new FormData();
-                        for(var k in body) fd.append(k, body[k]);
-                        fetch(adminPost, { method:'POST', body:fd, credentials:'same-origin', redirect:'manual' })
-                            .then(function(r){ if(r.ok || r.type==='opaqueredirect') onOk(); else nbNotice('Lỗi server: '+r.status, false); })
-                            .catch(function(e){ nbNotice('Fetch error: '+e.message, false); });
-                    }
-
-                    // Attach
-                    var attachBtn = document.getElementById('bk-nb-attach-btn');
-                    if(attachBtn){
-                        attachBtn.addEventListener('click', function(){
-                            var sel = document.getElementById('bk-nb-select');
-                            var ids = Array.from(sel.selectedOptions).map(function(o){ return o.value; });
-                            if(!ids.length){ nbNotice('Chọn ít nhất 1 notebook.', false); return; }
-                            attachBtn.disabled = true;
-                            var body = {
-                                action: 'bizcity_character_notebook_attach',
-                                character_id: attachBtn.dataset.cid,
-                                _wpnonce: attachBtn.dataset.nonce
-                            };
-                            ids.forEach(function(id){ body['notebook_ids[]'] = id; });
-                            // For multiple values we need FormData manually
-                            var fd = new FormData();
-                            fd.append('action', 'bizcity_character_notebook_attach');
-                            fd.append('character_id', attachBtn.dataset.cid);
-                            fd.append('_wpnonce', attachBtn.dataset.nonce);
-                            ids.forEach(function(id){ fd.append('notebook_ids[]', id); });
-                            fetch(adminPost, { method:'POST', body:fd, credentials:'same-origin', redirect:'manual' })
-                                .then(function(){ nbNotice('Đã gắn! Đang tải lại…', true); setTimeout(function(){ location.reload(); }, 800); })
-                                .catch(function(e){ nbNotice('Fetch error: '+e.message, false); attachBtn.disabled = false; });
-                        });
-                    }
-
-                    // Detach
-                    document.querySelectorAll('.bk-nb-detach').forEach(function(btn){
-                        btn.addEventListener('click', function(){
-                            if(!confirm('Gỡ notebook này khỏi Connector?')) return;
-                            btn.disabled = true;
-                            var fd = new FormData();
-                            fd.append('action', 'bizcity_character_notebook_detach');
-                            fd.append('character_id', btn.dataset.cid);
-                            fd.append('notebook_id',  btn.dataset.nb);
-                            fd.append('_wpnonce',     btn.dataset.nonce);
-                            fetch(adminPost, { method:'POST', body:fd, credentials:'same-origin', redirect:'manual' })
-                                .then(function(){
-                                    var row = document.getElementById('bk-nb-row-'+btn.dataset.nb);
-                                    if(row) row.remove();
-                                    nbNotice('Đã gỡ notebook.', true);
-                                })
-                                .catch(function(e){ nbNotice('Fetch error: '+e.message, false); btn.disabled = false; });
-                        });
+                    btn.addEventListener('click', function(){
+                        var folders = Array.from(document.querySelectorAll('.bk-vault-folder:checked')).map(function(c){ return c.value; });
+                        btn.disabled = true;
+                        fetch(url, { method:'PUT', credentials:'same-origin', headers:{ 'Content-Type':'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ folders: folders }) })
+                            .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+                            .then(function(res){ btn.disabled = false; notice(res.ok ? 'Đã lưu thư mục cho Guru.' : ((res.j && res.j.message) || 'Không lưu được.'), res.ok); })
+                            .catch(function(e){ btn.disabled = false; notice('Lỗi mạng: ' + e.message, false); });
                     });
                 })();
                 </script>
@@ -1884,7 +1737,8 @@ if ( $initial_tab ) :
 <script>
 jQuery(function($){
     var tab = <?php echo wp_json_encode( $initial_tab ); ?>;
-    var allowed = ['general','quick-knowledge','notebooks','channels','dashboard','automations'];
+    var allowed = ['general','quick-knowledge','vault','channels','dashboard','automations'];
+    if ( tab === 'notebooks' ) { tab = 'vault'; } // PHASE-0.151 G — old links
     if ( allowed.indexOf(tab) !== -1 ) {
         // Wait for CharacterEdit to finish init then switch
         setTimeout(function(){

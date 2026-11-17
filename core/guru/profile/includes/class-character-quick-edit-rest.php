@@ -4,7 +4,7 @@
  *
  * Designed for the Channel Gateway SPA — exposes a focused subset of the
  * full character-edit admin page so operators can tweak prompt / tone /
- * quick FAQ / attached notebooks inline from a dialog sheet without
+ * quick FAQ / Kho tri thức folders (PHASE-0.151 G; was attached notebooks) inline from a dialog sheet without
  * jumping into wp-admin.
  *
  *   GET  /bizcity-knowledge/v1/characters/{id}/quick-edit
@@ -158,45 +158,9 @@ class BizCity_Character_Quick_Edit_REST {
 			}
 		}
 
-		$notebooks_attached  = array();
-		$notebooks_available = array();
-		if ( class_exists( 'BizCity_KG_Database' ) ) {
-			global $wpdb;
-			$kg_db               = BizCity_KG_Database::instance();
-			$tbl_nb              = $kg_db->tbl_notebooks();
-			$tbl_att             = $kg_db->tbl_notebook_character_attachments();
-			$guru_uuid           = self::get_guru_uuid( $id );
-			$notebooks_attached  = $wpdb->get_results( $wpdb->prepare(
-				"SELECT DISTINCT nb.id, nb.name, nb.description, nb.owner_id, nb.notebook_scope, nb.updated_at
-				   FROM {$tbl_nb} AS nb
-				   INNER JOIN {$tbl_att} AS attachment ON attachment.notebook_id = nb.id
-				  WHERE attachment.guru_uuid = %s
-				  ORDER BY updated_at DESC
-				  LIMIT 200",
-				$guru_uuid
-			), ARRAY_A ) ?: array();
-			if ( empty( $notebooks_attached ) ) {
-				// [2026-08-15 Johnny Chu] PHASE-TWB-GURU-NOTEBOOK — preserve legacy visibility until attachment backfill completes.
-				$notebooks_attached = $wpdb->get_results( $wpdb->prepare(
-					"SELECT id, name, description, owner_id, notebook_scope, character_id, updated_at
-					   FROM {$tbl_nb} WHERE character_id = %d ORDER BY updated_at DESC LIMIT 200",
-					$id
-				), ARRAY_A ) ?: array();
-			}
-
-			$notebooks_available = $wpdb->get_results( $wpdb->prepare(
-				"SELECT nb.id, nb.name, nb.character_id, nb.owner_id, nb.notebook_scope, nb.updated_at
-				   FROM {$tbl_nb}
-				  WHERE id NOT IN (
-					SELECT attachment.notebook_id FROM {$tbl_att} AS attachment WHERE attachment.guru_uuid = %s
-				  )
-				  ORDER BY updated_at DESC
-				  LIMIT 200",
-				$guru_uuid
-			), ARRAY_A ) ?: array();
-			// [2026-07-15 Johnny Chu] PHASE-TWIN-GPT-CP W1 — enrich attached notebooks with KG stats for Tab D bridge.
-			$notebooks_attached = self::enrich_notebooks_with_stats( $notebooks_attached );
-		}
+		// [2026-11-15 12:54 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 G (Q151-12, chủ: "bỏ luôn notebook, chỉ tập trung vào vault") — the Guru answers from the Kho tri thức
+		// folders chosen for it (+ its instruction); notebooks are no longer read here. `notebooks_*` stay [] for an older client.
+		$vault_folders = self::vault_folder_choices( $id );
 
 		// [2026-07-15 Johnny Chu] PHASE-TWIN-GPT-CP W1 — expose quick training sources/status for Tab C.
 		$quick_training = self::build_training_payload( $id );
@@ -222,8 +186,9 @@ class BizCity_Character_Quick_Edit_REST {
 			'runtime_bounds'      => $bounds,
 			'quick_faq'           => $quick_faq,
 			'quick_training'      => $quick_training,
-			'notebooks_attached'  => array_map( array( __CLASS__, 'normalize_nb' ), $notebooks_attached ),
-			'notebooks_available' => array_map( array( __CLASS__, 'normalize_nb' ), $notebooks_available ),
+			'notebooks_attached'  => array(),
+			'notebooks_available' => array(),
+			'vault_folders'       => $vault_folders, // PHASE-0.151 G — {selected: ["20",…], all: [{n,label,icon,access}]}
 		) );
 	}
 
@@ -247,6 +212,10 @@ class BizCity_Character_Quick_Edit_REST {
 		}
 
 		$updated = array();
+		// PHASE-0.151 G — refused before anything is written (no half-saved sheet)
+		if ( ! empty( $params['attach_notebook_ids'] ) || ! empty( $params['detach_notebook_ids'] ) ) { // an empty list from an older client is not a request
+			return new WP_Error( 'guru_notebook_retired', 'Guru không dùng notebook nữa: chọn thư mục Kho tri thức cho Guru.', array( 'status' => 410, 'hint' => 'Thêm tài liệu vào Kho tri thức rồi chọn thư mục ở mục "Kho tri thức" của Guru.', 'help_code' => 'twin_vault' ) );
+		}
 		$settings = self::decode_settings( $character->settings ?? '' );
 		if ( array_key_exists( 'notebook_policy', $params ) ) {
 			$notebook_policy = sanitize_key( (string) $params['notebook_policy'] );
@@ -319,57 +288,14 @@ class BizCity_Character_Quick_Edit_REST {
 			$updated['quick_training'] = self::handle_quick_training_actions( $id, (array) $params['quick_training'] );
 		}
 
-		// 3) Notebook attach (idempotent).
-		if ( isset( $params['attach_notebook_ids'] ) && is_array( $params['attach_notebook_ids'] ) && class_exists( 'BizCity_KG_Database' ) ) {
-			global $wpdb;
-			$kg_db  = BizCity_KG_Database::instance();
-			$guru_uuid = self::get_guru_uuid( $id );
-			if ( '' === $guru_uuid ) {
-				return new WP_Error( 'guru_uuid_missing', 'Guru chưa có định danh canonical để gắn notebook.', array( 'status' => 409 ) );
+		// [2026-11-15 12:54 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 G (Q151-12, chủ: "bỏ luôn notebook, chỉ tập trung vào vault") — attaching / detaching a notebook is retired;
+		// the Guru's knowledge = the Kho tri thức folders sent as `vault_folders` (same writer as Guru Studio PUT bizcity-vault/v1/guru/{id}/folders).
+		if ( isset( $params['vault_folders'] ) && is_array( $params['vault_folders'] ) && class_exists( 'BizCity_Guru_Studio' ) ) {
+			$set = BizCity_Guru_Studio::set_guru_folders( $id, array_map( 'strval', $params['vault_folders'] ) );
+			if ( is_wp_error( $set ) ) {
+				return $set;
 			}
-			$ids_in  = array_filter( array_map( 'intval', $params['attach_notebook_ids'] ) );
-			$attached = array();
-			$attach_errors = array();
-			foreach ( $ids_in as $nb_id ) {
-				$attachment = $kg_db->attach_guru( $nb_id, $guru_uuid, array(
-					'public_serving' => self::is_public_guru( $id ),
-					'attached_by'   => get_current_user_id(),
-				) );
-				if ( is_wp_error( $attachment ) ) {
-					$attach_errors[] = $attachment->get_error_message();
-				} else {
-					$attached[] = (int) $nb_id;
-				}
-			}
-			if ( ! empty( $attach_errors ) ) {
-				return new WP_Error( 'notebook_attach_failed', implode( ' ', $attach_errors ), array( 'status' => 400 ) );
-			}
-			$updated['attached_notebooks'] = $attached;
-			if ( $attached && self::enable_notebook_scope( $id ) ) {
-				$updated['scope_knowledge'] = 'base+notebooks';
-			}
-		}
-
-		// 4) Notebook detach (only when notebook is currently bound to THIS character).
-		if ( isset( $params['detach_notebook_ids'] ) && is_array( $params['detach_notebook_ids'] ) && class_exists( 'BizCity_KG_Database' ) ) {
-			global $wpdb;
-			$kg_db    = BizCity_KG_Database::instance();
-			$tbl_nb   = $kg_db->tbl_notebooks();
-			$guru_uuid = self::get_guru_uuid( $id );
-			if ( '' === $guru_uuid ) {
-				return new WP_Error( 'guru_uuid_missing', 'Guru chưa có định danh canonical để gỡ notebook.', array( 'status' => 409 ) );
-			}
-			$ids_in   = array_filter( array_map( 'intval', $params['detach_notebook_ids'] ) );
-			$detached = array();
-			foreach ( $ids_in as $nb_id ) {
-				$detach = $kg_db->detach_guru( $nb_id, $guru_uuid );
-				if ( is_array( $detach ) && (int) ( $detach['deleted'] ?? 0 ) > 0 ) {
-					// [2026-08-15 Johnny Chu] PHASE-TWB-GURU-NOTEBOOK — clear legacy compatibility state so migration fallback cannot resurrect a detached notebook.
-					$wpdb->update( $tbl_nb, array( 'character_id' => null ), array( 'id' => $nb_id, 'character_id' => $id ) );
-					$detached[] = (int) $nb_id;
-				}
-			}
-			$updated['detached_notebooks'] = $detached;
+			$updated['vault_folders'] = $set;
 		}
 
 		// Return a fresh payload so the SPA can refresh local state in one round-trip.
@@ -385,89 +311,20 @@ class BizCity_Character_Quick_Edit_REST {
 	/* ────────────────────────── Helpers ────────────────────────── */
 
 	/**
-	 * [2026-09-27 Claude Opus 5.5] PHASE-0.81 C3.1 — attaching a notebook from the Bot Studio sheet means "answer from it": the Guru's
-	 * scope (settings.bot.scope.knowledge, R-GS-3) moves to base+notebooks. The notebook list itself is read from the kg-hub attachments
-	 * (bizcity_guru_notebook_ids, C1.0), so there is nothing else to write. Detaching never switches it back; the owner does that.
+	 * [2026-11-15 12:54 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 G (Q151-12, chủ: "bỏ luôn notebook, chỉ tập trung vào vault") — the folder picker of a Guru: which Kho tri thức
+	 * folders it answers from (BizCity_Twin_Vault::folders_for_guru, D134-20) and every folder it could take. Customers only ever read the PUBLIC ones.
 	 *
-	 * @return bool true when the scope was switched now.
+	 * @return array{selected:string[],all:array}
 	 */
-	public static function enable_notebook_scope( int $character_id ): bool {
-		if ( ! class_exists( 'BizCity_Bot_Config_Repo' ) || ! class_exists( 'BizCity_Guru_Context_Resolver' ) ) {
-			return false;
+	private static function vault_folder_choices( int $character_id ): array {
+		if ( ! class_exists( 'BizCity_Twin_Vault' ) ) {
+			return array( 'selected' => array(), 'all' => array() );
 		}
-		if ( 'base+notebooks' === BizCity_Guru_Context_Resolver::scope( $character_id )['knowledge'] ) {
-			return false;
+		$all = array();
+		foreach ( (array) BizCity_Twin_Vault::folders() as $f ) {
+			$all[] = array( 'n' => (string) $f['n'], 'label' => (string) ( $f['label'] ?? $f['n'] ), 'icon' => (string) ( $f['icon'] ?? '' ), 'access' => (string) ( $f['access'] ?? 'staff' ) );
 		}
-		$saved = BizCity_Bot_Config_Repo::save( $character_id, array( 'scope' => array( 'knowledge' => 'base+notebooks' ) ) );
-		BizCity_Guru_Context_Resolver::reset();
-		return ! is_wp_error( $saved );
-	}
-
-	private static function get_guru_uuid( $character_id ) {
-		global $wpdb;
-		$table = $wpdb->prefix . 'bizcity_characters';
-		$uuid = $wpdb->get_var( $wpdb->prepare( "SELECT guru_uuid FROM {$table} WHERE id = %d LIMIT 1", (int) $character_id ) );
-		return strtolower( trim( (string) $uuid ) );
-	}
-
-	private static function is_public_guru( $character_id ): bool {
-		global $wpdb;
-		$table = $wpdb->prefix . 'bizcity_characters';
-		$visibility = $wpdb->get_var( $wpdb->prepare( "SELECT visibility FROM {$table} WHERE id = %d LIMIT 1", (int) $character_id ) );
-		return 'marketplace' === (string) $visibility;
-	}
-
-	private static function normalize_nb( $row ) {
-		if ( ! is_array( $row ) ) {
-			$row = (array) $row;
-		}
-		return array(
-			'id'           => (int) ( $row['id'] ?? 0 ),
-			'name'         => (string) ( $row['name'] ?? '' ),
-			'description'  => (string) ( $row['description'] ?? '' ),
-			'character_id' => isset( $row['character_id'] ) ? (int) $row['character_id'] : 0,
-			'owner_id'     => isset( $row['owner_id'] ) ? (int) $row['owner_id'] : 0,
-			'notebook_scope' => (string) ( $row['notebook_scope'] ?? '' ),
-			'sources_count'=> isset( $row['sources_count'] ) ? (int) $row['sources_count'] : 0,
-			'passages_count'=> isset( $row['passages_count'] ) ? (int) $row['passages_count'] : 0,
-			'health'       => (string) ( $row['health'] ?? 'unknown' ),
-			'last_indexed_at' => (string) ( $row['last_indexed_at'] ?? '' ),
-			'updated_at'   => (string) ( $row['updated_at'] ?? '' ),
-		);
-	}
-
-	/**
-	 * Add stats badges for attached notebooks in Quick Sheet Tab D.
-	 *
-	 * @param array $rows
-	 * @return array
-	 */
-	private static function enrich_notebooks_with_stats( $rows ) {
-		if ( ! is_array( $rows ) || empty( $rows ) || ! class_exists( 'BizCity_KG_Notebook_Service' ) ) {
-			return is_array( $rows ) ? $rows : array();
-		}
-
-		$service = BizCity_KG_Notebook_Service::instance();
-		foreach ( $rows as $idx => $row ) {
-			$nb_id = isset( $row['id'] ) ? (int) $row['id'] : 0;
-			if ( $nb_id <= 0 ) {
-				continue;
-			}
-			$nb = $service->get( $nb_id );
-			if ( ! is_array( $nb ) ) {
-				continue;
-			}
-			$stats = isset( $nb['stats'] ) && is_array( $nb['stats'] ) ? $nb['stats'] : array();
-			$sources_count  = (int) ( $stats['sources'] ?? 0 );
-			$passages_count = (int) ( $stats['passages'] ?? 0 );
-
-			$rows[ $idx ]['sources_count']  = $sources_count;
-			$rows[ $idx ]['passages_count'] = $passages_count;
-			$rows[ $idx ]['last_indexed_at'] = (string) ( $row['updated_at'] ?? '' );
-			$rows[ $idx ]['health'] = $passages_count > 0 ? 'ready' : ( $sources_count > 0 ? 'processing' : 'empty' );
-		}
-
-		return $rows;
+		return array( 'selected' => array_values( BizCity_Twin_Vault::folders_for_guru( $character_id ) ), 'all' => $all );
 	}
 
 	/**

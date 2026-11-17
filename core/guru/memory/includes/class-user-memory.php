@@ -960,7 +960,8 @@ class BizCity_User_Memory {
         if ( ! is_array( $receipt ) ) {
             return false;
         }
-        do_action( 'bizcity_memory_mirror_delete', 'user', (int) ( $existing['legacy_id'] ?? 0 ), array( 'blog_id' => $blog_id, 'record_id' => $record_id, 'filestore_receipt' => $receipt ) );
+        // [2026-11-15 12:41 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 M2 — + identity_uuid (additive): the Vault mirror then opens only this person's memory files.
+        do_action( 'bizcity_memory_mirror_delete', 'user', (int) ( $existing['legacy_id'] ?? 0 ), array( 'blog_id' => $blog_id, 'record_id' => $record_id, 'identity_uuid' => $identity_uuid, 'filestore_receipt' => $receipt ) );
         return true;
     }
 
@@ -1571,6 +1572,8 @@ Yêu cầu output:
                 $evict_record_id = (string) ( $evict['record_id'] ?? '' );
                 if ( $evict_record_id !== '' ) {
                     BizCity_Business_JSONL_File_Store::delete( self::BUSINESS_CONTRACT_ID, $evict_record_id, array( 'blog_id' => (int) $blog_id ) );
+                    // [2026-11-15 07:38 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 M3 — the evicted memory leaves the Vault .md too (reads come from there).
+                    do_action( 'bizcity_memory_mirror_delete', 'user', (int) ( $evict['legacy_id'] ?? 0 ), array( 'blog_id' => (int) $blog_id, 'record_id' => $evict_record_id, 'identity_uuid' => (string) ( $normalized['identity_uuid'] ?? '' ) ) );
                 }
             }
         }

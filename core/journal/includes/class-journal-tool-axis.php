@@ -144,6 +144,10 @@ final class BizCity_Journal_Tool_Axis {
 				return $o;
 			}
 		}
+		// [2026-11-15 10:55 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V1c — unknown number ⇒ the acting Kho owner (each user id has its own Sổ), not the site owner
+		if ( class_exists( 'BizCity_Vault_Owner' ) && BizCity_Vault_Owner::current() > 0 ) {
+			return BizCity_Vault_Owner::current();
+		}
 		return class_exists( 'BizCity_Twin_Web_Home' ) ? (int) BizCity_Twin_Web_Home::owner_user_id() : 0;
 	}
 }

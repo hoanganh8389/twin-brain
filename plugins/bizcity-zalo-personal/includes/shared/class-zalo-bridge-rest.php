@@ -1482,7 +1482,11 @@ class BizCity_Zalo_Bridge_REST {
 		if ( ! $gate['ok'] ) {
 			return $gate['response'];
 		}
-		$profile = self::guru_public( BizCity_Guru_Context_Resolver::profile( (int) $gate['character_id'] ) );
+		// [2026-11-15 10:55 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V1c — the Guru's Kho folders are those of the user id that owns this number
+		$cid0    = (int) $gate['character_id'];
+		$profile = self::guru_public( class_exists( 'BizCity_Vault_Owner' )
+			? BizCity_Vault_Owner::with_account( $bridge_id, static function () use ( $cid0 ) { return BizCity_Guru_Context_Resolver::profile( $cid0 ); } )
+			: BizCity_Guru_Context_Resolver::profile( $cid0 ) );
 		$etag = (string) $profile['guru']['etag'];
 		if ( $etag !== '' && trim( (string) $request->get_header( 'if_none_match' ), " \"" ) === $etag ) {
 			$r = new WP_REST_Response( null, 304 );
@@ -1510,14 +1514,25 @@ class BizCity_Zalo_Bridge_REST {
 		$cid        = (int) $gate['character_id'];
 		$thread_id  = sanitize_text_field( (string) ( $body['thread_id'] ?? '' ) );
 		$contact_id = self::crm_contact_for( $bridge_id, $thread_id );
-		$prompt = BizCity_Guru_Context_Resolver::context( $cid, array(
-			'contact_id' => $contact_id,
-			'query'      => mb_substr( (string) ( $body['query'] ?? '' ), 0, 2000 ),
-			'max_blocks' => (int) ( $body['max_blocks'] ?? 0 ) ?: null,
-			'max_chars'  => (int) ( $body['max_chars'] ?? 0 ) ?: null,
-			'notebooks'  => false, // PHASE-0.81 S81-R4 — the cell retrieves from its own copy of the notebooks (C-4); never twice
-		) );
-		$profile = self::guru_public( BizCity_Guru_Context_Resolver::profile( $cid ) );
+		list( $space, $space_col ) = self::space_of_turn( $bridge_id, $thread_id ); // PHASE-0.153 V6
+		$build = static function () use ( $cid, $contact_id, $body, $bridge_id, $space, $space_col ) {
+			return array(
+				BizCity_Guru_Context_Resolver::context( $cid, array(
+					'space'      => $space, // PHASE-0.153 V6 — this chat's own space only
+					'space_col'  => $space_col,
+					'contact_id' => $contact_id,
+					'query'      => mb_substr( (string) ( $body['query'] ?? '' ), 0, 2000 ),
+					'max_blocks' => (int) ( $body['max_blocks'] ?? 0 ) ?: null,
+					'max_chars'  => (int) ( $body['max_chars'] ?? 0 ) ?: null,
+					'notebooks'  => false, // PHASE-0.81 S81-R4 — the cell retrieves from its own copy of the notebooks (C-4); never twice
+					'account_id' => $bridge_id, // PHASE-0.153 V1c — Kho of the number's owner
+				) ),
+				BizCity_Guru_Context_Resolver::profile( $cid ),
+			);
+		};
+		// [2026-11-15 10:55 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V1c — prompt + profile are built in the Kho of the user id that owns this number
+		list( $prompt, $profile_raw ) = class_exists( 'BizCity_Vault_Owner' ) ? BizCity_Vault_Owner::with_account( $bridge_id, $build ) : $build();
+		$profile = self::guru_public( $profile_raw );
 		$out = array(
 			'contract'     => $profile['contract'],
 			'guru'         => $profile['guru'],
@@ -1530,6 +1545,32 @@ class BizCity_Zalo_Bridge_REST {
 			$out['instruction'] = $profile['instruction'];
 		}
 		return new WP_REST_Response( $out, 200 );
+	}
+
+	/**
+	 * [2026-11-17 11:05 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V6 — the space (ngăn) of this turn's own thread + its matrix column, read-only:
+	 * a group thread (CRM source `group:<id>`) ⇒ [group:<id>, group_owner|group_no_owner|''] (the owner-presence flag of V4a; unknown ⇒ '' ⇒ not read);
+	 * a 1-1 thread of a customer ⇒ [contact:<uuid> | '' (no identity yet), customer_1_1]; owner / staff / bad id ⇒ ['', ''].
+	 * Never binds a new identity (a question is not a reason to create a customer record).
+	 *
+	 * @return array{0:string,1:string}
+	 */
+	public static function space_of_turn( string $bridge_id, string $thread_id ): array {
+		if ( 1 !== preg_match( '/^[0-9]{3,30}$/', $thread_id ) || ! class_exists( 'BizCity_Vault_Spaces' ) ) {
+			return array( '', '' );
+		}
+		if ( self::crm_contact_for( $bridge_id, 'group:' . $thread_id ) > 0 ) {
+			$col = class_exists( 'BizCity_CRM_Group_Secretary' ) && method_exists( 'BizCity_CRM_Group_Secretary', 'policy_col' ) ? BizCity_CRM_Group_Secretary::policy_col( $bridge_id, $thread_id ) : '';
+			return array( 'group:' . $thread_id, $col );
+		}
+		if ( class_exists( 'BizCity_CRM_Contact_Space' ) && ! BizCity_CRM_Contact_Space::is_customer( $bridge_id, $thread_id ) ) {
+			return array( '', '' );
+		}
+		$uuid = class_exists( 'BizCity_Bot_Memory' ) && method_exists( 'BizCity_Bot_Memory', 'identity_for_claim' )
+			? strtolower( (string) BizCity_Bot_Memory::identity_for_claim( array( 'account_id' => $bridge_id, 'sender_uid' => $thread_id, 'chat_kind' => 'user' ), false ) )
+			: '';
+		$id = '' !== $uuid ? BizCity_Vault_Spaces::id( 'contact:' . $uuid ) : '';
+		return array( $id, 'customer_1_1' ); // no identity yet ⇒ no space to read, but the save-policy line still applies to this customer
 	}
 
 	/** CRM contact of a Zalo thread of this number (read-only) — the customer block of the prompt needs it. 0 when unknown. */

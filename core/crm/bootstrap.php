@@ -81,6 +81,11 @@ if ( is_readable( $bizcity_crm_inc . 'class-crm-zalo-directory.php' ) ) {
 if ( is_readable( $bizcity_crm_inc . 'class-crm-group-secretary.php' ) ) {
 	require_once $bizcity_crm_inc . 'class-crm-group-secretary.php';
 	BizCity_CRM_Group_Secretary::init(); // W2: tự lưu tệp nhóm đang theo dõi (hook bizcity_crm_message_persisted)
+	// [2026-11-17 10:04 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V4b — khách 1-1 nói "lưu giúp" ⇒ ngăn khách (guarded: new file; dùng files_from_rows của thư ký nhóm)
+	if ( is_readable( $bizcity_crm_inc . 'class-crm-contact-space.php' ) ) {
+		require_once $bizcity_crm_inc . 'class-crm-contact-space.php';
+		BizCity_CRM_Contact_Space::init();
+	}
 	if ( is_readable( $bizcity_crm_inc . 'class-crm-group-index-pack.php' ) ) { // [2026-10-20 06:01 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.124 G0 — gói group_index cho cell
 		require_once $bizcity_crm_inc . 'class-crm-group-index-pack.php';
 		BizCity_CRM_Group_Index_Pack::register();

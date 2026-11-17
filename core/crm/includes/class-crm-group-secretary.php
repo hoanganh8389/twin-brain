@@ -356,6 +356,88 @@ final class BizCity_CRM_Group_Secretary {
 		return 3;
 	}
 
+	/* ── PHASE-0.153 V4: nhóm có chủ (Q153-1) + ma trận lưu (BizCity_Vault_Policy) ── */
+
+	// [2026-11-16 09:04 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V4 — "nhóm có chủ" = UID chủ số là thành viên nhóm. Chỉ cell đọc được danh sách thành viên
+	// (zca), nên cell báo cờ qua MCP hệ thống `group.presence.record`. Cờ chọn cột "Nhóm có chủ" / "Nhóm không có chủ" của ma trận lưu trong Kho của CHỦ SỐ.
+	// Cờ quá 7 ngày ⇒ "chưa biết". Chưa biết / site chưa có ma trận ⇒ giữ hành vi cũ (tự lưu tệp như D136-13), để upload không làm mất lưu tệp.
+	const OPTION_PRESENCE  = 'bizcity_group_secretary_presence_';
+	const PRESENCE_TTL     = 604800;
+	const PRESENCE_REFRESH = 3600;
+	const PRESENCE_MAX     = 2000;
+
+	/** @return array<string, array{in:bool, at:int}> */
+	private static function presence_all( string $bridge ): array {
+		$k   = self::OPTION_PRESENCE . substr( preg_replace( '/[^a-z0-9_\-]/i', '', $bridge ), 0, 40 );
+		$raw = isset( self::$readers['get_option'] ) ? call_user_func( self::$readers['get_option'], $k ) : get_option( $k, array() );
+		return is_array( $raw ) ? $raw : array();
+	}
+
+	/** true / false = cell đã báo trong 7 ngày; null = chưa biết. */
+	public static function owner_in_group( string $bridge, string $gid ): ?bool {
+		$p = self::presence_all( $bridge )[ self::clean_gid( $gid ) ] ?? null;
+		if ( ! is_array( $p ) || self::now_local() - (int) ( $p['at'] ?? 0 ) > self::PRESENCE_TTL ) {
+			return null;
+		}
+		return ! empty( $p['in'] );
+	}
+
+	/** Cell báo cờ (đã kiểm bậc 1 ở MCP). Chỉ ghi option khi cờ đổi hoặc bản cũ quá 1 giờ. */
+	public static function record_presence( string $bridge, string $gid, bool $owner_in ): array {
+		$gid = self::clean_gid( $gid );
+		if ( '' === $gid ) {
+			return array( 'owner_in' => $owner_in, 'changed' => false );
+		}
+		$all = self::presence_all( $bridge );
+		$cur = $all[ $gid ] ?? null;
+		$now = self::now_local();
+		$changed = ! is_array( $cur ) || (bool) ( $cur['in'] ?? false ) !== $owner_in;
+		if ( $changed || $now - (int) ( $cur['at'] ?? 0 ) > self::PRESENCE_REFRESH ) {
+			unset( $all[ $gid ] );
+			$all[ $gid ] = array( 'in' => $owner_in, 'at' => $now );
+			if ( count( $all ) > self::PRESENCE_MAX ) {
+				$all = array_slice( $all, -self::PRESENCE_MAX, null, true ); // nhóm báo lâu nhất rơi ra trước
+			}
+			$k = self::OPTION_PRESENCE . substr( preg_replace( '/[^a-z0-9_\-]/i', '', $bridge ), 0, 40 );
+			if ( isset( self::$readers['update_option'] ) ) {
+				call_user_func( self::$readers['update_option'], $k, $all );
+			} else {
+				update_option( $k, $all, false );
+			}
+		}
+		return array( 'owner_in' => $owner_in, 'changed' => $changed );
+	}
+
+	/** Cột ma trận của nhóm: group_owner · group_no_owner · '' (chưa biết). */
+	public static function policy_col( string $bridge, string $gid ): string {
+		$in = self::owner_in_group( $bridge, $gid );
+		return null === $in ? '' : ( $in ? 'group_owner' : 'group_no_owner' );
+	}
+
+	/**
+	 * Chế độ ma trận (auto · ask · off · na) của MỘT việc (files · tasks · minutes …) trong nhóm này, theo Kho của chủ số, riêng số này và riêng ngăn
+	 * nhóm. '' = chưa áp dụng được (site chưa có ma trận, chưa biết chủ có trong nhóm, số chưa gắn chủ).
+	 */
+	public static function policy_mode( string $bridge, string $gid, string $row ): string {
+		if ( ! class_exists( 'BizCity_Vault_Policy' ) ) {
+			return '';
+		}
+		$col = self::policy_col( $bridge, $gid );
+		$own = (int) self::call_reader( 'owner_user', array( $bridge ), 0 );
+		if ( '' === $col || $own <= 0 ) {
+			return '';
+		}
+		$data    = isset( self::$readers['policy_data'] ) ? (array) call_user_func( self::$readers['policy_data'], $own ) : BizCity_Vault_Policy::data( $own );
+		$account = 0 === strpos( $bridge, 'rzh:' ) ? substr( $bridge, 4 ) : $bridge;
+		$space   = class_exists( 'BizCity_Vault_Spaces' ) ? BizCity_Vault_Spaces::id( 'group:' . self::clean_gid( $gid ) ) : '';
+		return BizCity_Vault_Policy::mode( $data, $row, $col, $account, $space );
+	}
+
+	/** PHASE-0.153 — the matrix asks for day minutes in this group ("Biên bản ngày" = auto, the owner-presence flag known). */
+	public static function minutes_auto( string $bridge, string $gid ): bool {
+		return 'auto' === self::policy_mode( $bridge, $gid, 'minutes' );
+	}
+
 	/* ── nhóm ──────────────────────────────────────────────────────────── */
 
 	public static function group_ref( int $conv_id ): string {
@@ -657,6 +739,12 @@ final class BizCity_CRM_Group_Secretary {
 		$bridge = '' !== (string) ( $row['account_id'] ?? '' ) ? (string) $row['account_id'] : (string) ( $row['inbox_ref_id'] ?? '' );
 		if ( '' === $gid || ! self::setting( $bridge, $gid )['save_files'] ) {
 			return; // B10: cột "Tự lưu tệp" tắt ⇒ chỉ lưu theo lệnh
+		}
+		// [2026-11-16 09:04 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V4 — ma trận lưu: nhóm có chủ mặc định tự lưu, nhóm không có chủ mặc định không (chưa biết ⇒ như cũ).
+		// Trước claim_managed: nhóm không được lưu thì không chiếm suất của gói.
+		$mode = self::policy_mode( $bridge, $gid, 'files' );
+		if ( '' !== $mode && 'auto' !== $mode ) {
+			return;
 		}
 		// PHASE-0.136 D136-13: mọi nhóm (không cần "Theo dõi") — trong trần gói; nhóm đang theo dõi luôn có suất
 		if ( ! in_array( $gid, (array) ( $idx[ $bridge ] ?? array() ), true ) && ! self::claim_managed( $bridge, $gid ) ) {
@@ -1087,13 +1175,21 @@ final class BizCity_CRM_Group_Secretary {
 			return new WP_Error( 'group_no_owner', 'Số này chưa gắn chủ trên website nên chưa có sổ.', array( 'status' => 400 ) );
 		}
 		$due   = preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) ( $t['due'] ?? '' ) ) ? (string) $t['due'] : '';
+		// [2026-11-16 09:04 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V4 — việc giao của nhóm hiện trong ngăn nhóm (tag sp-g-…), trừ khi ma trận tắt "Việc giao" cho nhóm này
+		$tags = array( self::TAG_PREFIX . $gid );
+		if ( class_exists( 'BizCity_Vault_Spaces' ) && 'off' !== self::policy_mode( $bridge, $gid, 'tasks' ) ) {
+			$sp_tag = BizCity_Vault_Spaces::tag( 'group:' . $gid );
+			if ( '' !== $sp_tag ) {
+				$tags[] = $sp_tag;
+			}
+		}
 		$entry = array(
 			'owner_user_id'   => $owner,
 			'kind'            => 'task.todo',
 			'title'           => $what,
 			'summary'         => $what,
 			'doc_date'        => '' !== $due ? $due : null,
-			'tags'            => array( self::TAG_PREFIX . $gid ),
+			'tags'            => $tags,
 			'card'            => array( 'who' => self::clean_label( (string) ( $t['who'] ?? '' ) ), 'due' => $due, 'msg_ref' => $ref, 'group_ref' => self::group_ref( $conv_id ) ),
 			'origin'          => array( 'surface' => 'zalo_group', 'ref' => self::group_ref( $conv_id ) ),
 			'group'           => array( 'ref' => self::group_ref( $conv_id ), 'gid' => $gid, 'name' => self::group_name( $row ), 'msg_ref' => $ref ),
@@ -1228,7 +1324,9 @@ final class BizCity_CRM_Group_Secretary {
 		if ( 1 !== $g['tier'] ) {
 			return new WP_Error( 'group_owner_only', 'Sổ ghi chép nhóm chỉ do trợ lý của chủ ghi.', array( 'status' => 403 ) );
 		}
-		if ( ! self::setting( $bridge, $g['gid'] )['follow'] ) {
+		// [2026-11-17 11:36 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 (Q153-3) — a group with the owner whose "Biên bản ngày" is auto keeps a notebook too, without "Theo dõi"
+		// (no notice is posted in the group); the day roll-up then writes the minutes into the group space (minutes_to_space).
+		if ( ! self::setting( $bridge, $g['gid'] )['follow'] && ! self::minutes_auto( $bridge, $g['gid'] ) ) {
 			return new WP_Error( 'group_not_following', 'Nhóm chưa bật theo dõi — không ghi sổ ghi chép.', array( 'status' => 409 ) );
 		}
 		$from = self::msg_id_of( (string) ( $args['from_msg_ref'] ?? '' ), $g['conv_id'] );
@@ -1335,7 +1433,87 @@ final class BizCity_CRM_Group_Secretary {
 			'kept'           => 0,
 			'dropped'        => 0,
 		);
-		return self::write_brief( $bridge, $g, $level, $card, $key, (string) ( $first['from_at'] ?? '' ), (string) ( $last['to_at'] ?? '' ), 'gb:' . self::blog() . ':' . $g['gid'] . ':' . $key . ':' . $level );
+		$r = self::write_brief( $bridge, $g, $level, $card, $key, (string) ( $first['from_at'] ?? '' ), (string) ( $last['to_at'] ?? '' ), 'gb:' . self::blog() . ':' . $g['gid'] . ':' . $key . ':' . $level );
+		if ( 'day' === $level && is_array( $r ) ) {
+			self::minutes_to_space( $bridge, $g, $key, $card ); // PHASE-0.153 V4
+		}
+		return $r;
+	}
+
+	/**
+	 * [2026-11-16 09:04 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V4 (Q153-3) — biên bản ngày vào ngăn nhóm (`/khong-gian/nhom-…/bien-ban/<ngày>.md`) khi ma trận
+	 * "Biên bản ngày" là Tự động cho nhóm này (mặc định: nhóm có chủ). Chưa biết chủ có trong nhóm ⇒ không ghi (việc mới, đóng khi chưa chắc). Viết bằng mã từ
+	 * thẻ đã cuộn, không gọi model. Cùng ngày chạy lại ⇒ ghi đè cùng tệp. Lỗi không làm hỏng brief.
+	 */
+	public static function minutes_to_space( string $bridge, array $g, string $day, array $card ): void {
+		$gid = self::clean_gid( (string) ( $g['gid'] ?? '' ) );
+		if ( '' === $gid || 'auto' !== self::policy_mode( $bridge, $gid, 'minutes' ) ) {
+			return;
+		}
+		$owner = (int) self::call_reader( 'owner_user', array( $bridge ), 0 );
+		$name  = self::clean_label( (string) ( $g['name'] ?? '' ) );
+		$args  = array( 'title' => 'Biên bản ' . ( '' !== $name ? $name . ' ' : '' ) . $day, 'date' => $day, 'label' => $name, 'markdown' => self::minutes_markdown( $card, $name, $day ) );
+		$res   = isset( self::$readers['space_note'] )
+			? call_user_func( self::$readers['space_note'], 'group:' . $gid, 'bien-ban', $args, $owner )
+			: ( class_exists( 'BizCity_Vault_Spaces' ) ? BizCity_Vault_Spaces::write_note( 'group:' . $gid, 'bien-ban', $args, $owner ) : null );
+		if ( is_wp_error( $res ) && function_exists( 'error_log' ) ) {
+			error_log( '[BIZCITY_GROUP_MINUTES] ' . wp_json_encode( array( 'gid' => '…' . substr( $gid, -4 ), 'day' => $day, 'code' => $res->get_error_code() ) ) ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+		}
+	}
+
+	/** Thẻ brief ngày ⇒ Markdown biên bản. Pure. Mỗi mục giữ mã tin (msg_ref) để mở tin gốc. */
+	public static function minutes_markdown( array $card, string $name, string $day ): string {
+		$one = static function ( $s ): string {
+			return trim( (string) preg_replace( '/\s+/u', ' ', (string) $s ) );
+		};
+		$ref = static function ( array $it ) use ( $one ): string {
+			$r = $one( $it['msg_ref'] ?? '' );
+			return '' !== $r ? ' `' . $r . '`' : '';
+		};
+		$out = array( '# Biên bản ' . ( '' !== $name ? $name . ' — ' : '' ) . $day, '' );
+		$sum = $one( $card['summary'] ?? '' );
+		if ( '' !== $sum ) {
+			$out[] = $sum;
+			$out[] = '';
+		}
+		$out[] = '- Số tin: ' . (int) ( $card['msg_count'] ?? 0 );
+		$who   = array_filter( array_map( $one, (array) ( $card['participants'] ?? array() ) ) );
+		if ( $who ) {
+			$out[] = '- Người tham gia: ' . implode( ', ', $who );
+		}
+		$sections = array(
+			'decisions'      => array( 'Quyết định', static function ( array $it ) use ( $one ) { return $one( $it['text'] ?? '' ); } ),
+			'tasks'          => array( 'Việc', static function ( array $it ) use ( $one ) {
+				$w = $one( $it['who'] ?? '' );
+				$d = $one( $it['due'] ?? '' );
+				return ( '' !== $w ? $w . ': ' : '' ) . $one( $it['what'] ?? '' ) . ( '' !== $d ? ' (hạn ' . $d . ')' : '' );
+			} ),
+			'numbers'        => array( 'Con số', static function ( array $it ) use ( $one ) { return trim( $one( $it['label'] ?? '' ) . ': ' . $one( $it['value'] ?? '' ) . ' ' . $one( $it['unit'] ?? '' ) ); } ),
+			'open_questions' => array( 'Câu hỏi còn treo', static function ( array $it ) use ( $one ) { return $one( $it['text'] ?? '' ); } ),
+		);
+		foreach ( $sections as $k => list( $title, $line ) ) {
+			$items = array_filter( (array) ( $card[ $k ] ?? array() ), 'is_array' );
+			if ( ! $items ) {
+				continue;
+			}
+			$out[] = '';
+			$out[] = '## ' . $title;
+			foreach ( $items as $it ) {
+				$t = $line( $it );
+				if ( '' !== trim( $t, ' :' ) ) {
+					$out[] = '- ' . $t . $ref( $it );
+				}
+			}
+		}
+		$files = array_filter( array_map( $one, (array) ( $card['files'] ?? array() ) ) );
+		if ( $files ) {
+			$out[] = '';
+			$out[] = '## Tệp đã gửi';
+			foreach ( $files as $f ) {
+				$out[] = '- ' . $f;
+			}
+		}
+		return implode( "\n", $out ) . "\n";
 	}
 
 	/** Brief đầu tiên của một ngày mới ⇒ cuộn ngày hôm trước; đầu tuần mới ⇒ cuộn tuần trước (theo sự kiện, không cron). */

@@ -407,8 +407,8 @@ $_bzc_bot_files = array(
 	$gateway_dir . 'bot/class-guru-seed.php' => 'channel.bot.guru_seed',
 	// [2026-10-26 11:05 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.142 S142-L1…L10 — Guru Studio: kind_of, FB_MESS ⇒ FB_PAGE, guru-studio-view@1, guru-channels@1, guru-folders@1.
 	$gateway_dir . 'bot/class-guru-studio.php' => 'channel.bot.guru_studio',
-	// [2026-09-27 Claude Opus 5.5] PHASE-0.81 S81-R4 — notebook passages for the PHP engine (listener of the resolver's notebook seam).
-	$gateway_dir . 'bot/class-guru-notebook-blocks.php' => 'channel.bot.guru_notebook_blocks',
+	// [2026-11-15 12:54 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 G (Q151-12) — bot/class-guru-notebook-blocks.php removed: the resolver reads the
+	// Guru's public Kho tri thức passages itself (was the PHASE-0.81 S81-R4 notebook listener).
 	$gateway_dir . 'bot/class-bot-turn-claim.php'     => 'channel.bot.turn_claim',
 	// [2026-10-24 Johnny Chu - Chu Hoàng Anh] PHASE-0.126 R126-BOT (owner: "tách bot/ php hoàn toàn, 100% xử lý qua cell") — the PHP turn
 	// engine left the core for core/_archived/bot-engine-20261024/: turn runner, tools, vision, media / research / apify clients, media
@@ -452,9 +452,6 @@ if ( class_exists( 'BizCity_Agent_Mode_Access' ) ) {
 }
 if ( class_exists( 'BizCity_Agent_Astro_Self_Pack' ) ) {
 	BizCity_Agent_Astro_Self_Pack::register(); // [2026-10-01] PHASE-0.87 CL-2
-}
-if ( class_exists( 'BizCity_Guru_Notebook_Blocks' ) ) {
-	BizCity_Guru_Notebook_Blocks::boot(); // [2026-09-27] PHASE-0.81 S81-R4
 }
 
 // [2026-10-25 10:05 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.139 R126-BILL (owner "build khôi phục trọn vẹn lại page sử dụng, không cần bật bizcity-billing-addon nữa") — the usage / billing module (token usage page "Sử dụng", wallet, plans per Zalo number +

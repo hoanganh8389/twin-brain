@@ -407,20 +407,13 @@ class BizCity_Knowledge_Guru_Service {
 
 		list( $sources_copied, $chunks_copied ) = $this->copy_knowledge( $id, $new_id );
 
-		// The copy answers from the same notebooks: re-attach them to the new guru_uuid through
-		// the canonical writer (it enforces the "public Guru ⇒ no personal notebook" rule).
-		// Channel bindings are NOT copied — a draft copy never starts answering a channel.
-		$notebooks_attached = 0;
-		$notebook_errors    = array();
-		if ( ! empty( $data['guru_uuid'] ) && class_exists( 'BizCity_KG_Database' ) ) {
-			$kg_db = BizCity_KG_Database::instance();
-			foreach ( $this->attached_notebook_ids( strtolower( (string) ( $row['guru_uuid'] ?? '' ) ), $id ) as $nb_id ) {
-				$res = $kg_db->attach_guru( $nb_id, $data['guru_uuid'], array( 'source' => 'self', 'attached_by' => get_current_user_id() ) );
-				if ( is_wp_error( $res ) ) {
-					$notebook_errors[] = $res->get_error_message();
-				} else {
-					$notebooks_attached++;
-				}
+		// [2026-11-15 12:54 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 G (Q151-12) — the copy answers from the same Kho tri thức folders (was: the same
+		// notebooks re-attached). Channel bindings are NOT copied — a draft copy never starts answering a channel.
+		$folders_copied = 0;
+		if ( class_exists( 'BizCity_Twin_Vault' ) && class_exists( 'BizCity_Guru_Studio' ) ) {
+			$folders = BizCity_Twin_Vault::folders_for_guru( $id );
+			if ( $folders && ! is_wp_error( BizCity_Guru_Studio::set_guru_folders( $new_id, $folders ) ) ) {
+				$folders_copied = count( $folders );
 			}
 		}
 
@@ -432,8 +425,7 @@ class BizCity_Knowledge_Guru_Service {
 			'slug'               => $data['slug'],
 			'sources_copied'     => $sources_copied,
 			'chunks_copied'      => $chunks_copied,
-			'notebooks_attached' => $notebooks_attached,
-			'notebook_errors'    => $notebook_errors,
+			'folders_copied'     => $folders_copied,
 		);
 	}
 

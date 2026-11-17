@@ -170,7 +170,10 @@ final class BizCity_Zalo_MCP_Bridge_REST {
 		if ( $cid <= 0 ) {
 			return null;
 		}
-		$profile = BizCity_Guru_Context_Resolver::profile( $cid );
+		// [2026-11-15 10:55 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V1c — the Guru scope (public Kho folders ⇒ customer tools) of the number owner's Kho
+		$profile = class_exists( 'BizCity_Vault_Owner' )
+			? BizCity_Vault_Owner::with_account( (string) $account, static function () use ( $cid ) { return BizCity_Guru_Context_Resolver::profile( $cid ); } )
+			: BizCity_Guru_Context_Resolver::profile( $cid );
 		return array( 'character_id' => $cid, 'scope' => (array) ( $profile['scope'] ?? array() ) );
 	}
 

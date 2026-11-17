@@ -135,6 +135,13 @@ final class BizCity_Context_Bank_Memory_Adapter {
 		$filters = is_array( $scope['filters'] ?? null ) ? $scope['filters'] : $filters;
 		$contract_id = (string) $contract_id;
 		$limit = max( 1, min( 500, (int) ( $filters['limit'] ?? 100 ) ) );
+		// [2026-11-15 07:38 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.151 M3 (owner: "ko cần xuất trí nhớ cũ sang .md, đổi logic là ok") — Guru memory
+		// is read from the Vault .md files (05/tri-nho, memory-vault@1) the M2 mirror writes; the ledger + JSONL path below serves only `note`,
+		// or every class when the mirror is off / the vault store is not loaded (fail-safe, the JSONL dual-write still runs until M4).
+		$kind = self::vault_kind( $contract_id );
+		if ( '' !== $kind ) {
+			return self::query_vault( $kind, $filters, $limit );
+		}
 		$ledger_filters = array(
 			'source_contract_id' => $contract_id,
 			'record_kind'        => self::RECORD_KIND,
@@ -184,6 +191,53 @@ final class BizCity_Context_Bank_Memory_Adapter {
 				continue;
 			}
 			$record = $followed['record'];
+			if ( ! self::matches_record( $record, $filters ) ) {
+				continue;
+			}
+			if ( isset( $filters['filter'] ) && is_callable( $filters['filter'] ) && ! call_user_func( $filters['filter'], $record ) ) {
+				continue;
+			}
+			$out[] = $record;
+		}
+		return $out;
+	}
+
+	/** memory contract ⇒ memory-vault kind, '' when this contract is still read from the ledger (PHASE-0.151 M3). */
+	public static function vault_kind( $contract_id ) {
+		$kinds = array( 'user' => 'profile', 'rolling' => 'rolling', 'episodic' => 'episodic', 'session' => 'session' );
+		$class = array_search( (string) $contract_id, self::$contracts, true );
+		if ( false === $class || ! isset( $kinds[ $class ] ) ) {
+			return '';
+		}
+		if ( ! class_exists( 'BizCity_Memory_Vault_Store' ) || ! class_exists( 'BizCity_Memory_Vault_Mirror' ) || ! BizCity_Memory_Vault_Mirror::enabled() ) {
+			return '';
+		}
+		$on = ! defined( 'BIZCITY_MEMORY_READ_VAULT' ) || (bool) BIZCITY_MEMORY_READ_VAULT;
+		return ( function_exists( 'apply_filters' ) ? (bool) apply_filters( 'bizcity_memory_read_vault', $on, $contract_id ) : $on ) ? $kinds[ $class ] : '';
+	}
+
+	/** The scoped records of one kind from the Vault .md files, newest first, with the same field filters the ledger path applies. */
+	private static function query_vault( $kind, array $filters, $limit ) {
+		$subject = 'session' === $kind ? (string) ( $filters['session_id'] ?? '' ) : (string) ( $filters['identity_uuid'] ?? '' );
+		$blog    = (int) ( $filters['blog_id'] ?? get_current_blog_id() );
+		$account = self::account_from_reference( array( 'account_id' => $filters['account_id'] ?? '' ) );
+		$out     = array();
+		foreach ( BizCity_Memory_Vault_Store::records( $kind, $subject ) as $record ) {
+			if ( count( $out ) >= $limit ) {
+				break;
+			}
+			if ( isset( $record['blog_id'] ) && (int) $record['blog_id'] !== $blog ) {
+				continue;
+			}
+			if ( '' !== $account && self::account_from_reference( $record ) !== $account ) {
+				continue;
+			}
+			if ( isset( $filters['contact_id'] ) && (int) $filters['contact_id'] > 0 && (int) ( $record['contact_id'] ?? 0 ) !== (int) $filters['contact_id'] ) {
+				continue;
+			}
+			if ( isset( $filters['lifecycle_status'] ) && '' !== (string) $filters['lifecycle_status'] && 'active' !== (string) $filters['lifecycle_status'] ) {
+				continue; // a deleted memory is gone from the file — nothing but active records live there
+			}
 			if ( ! self::matches_record( $record, $filters ) ) {
 				continue;
 			}

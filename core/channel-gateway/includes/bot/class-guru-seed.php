@@ -344,12 +344,14 @@ class BizCity_Guru_Seed {
 	/** Numbers present in the saved option (a default that only comes from code is "never saved"). */
 	private static function folders_saved(): array {
 		if ( isset( self::$readers['folders_saved'] ) ) { return (array) call_user_func( self::$readers['folders_saved'] ); }
-		$raw = class_exists( 'BizCity_Twin_Vault' ) && function_exists( 'get_option' ) ? get_option( BizCity_Twin_Vault::FOLDER_OPTION, array() ) : array();
+		// [2026-11-15 10:40 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V1b — the saved folders of the acting Kho owner (site option only for the legacy owner)
+		$raw = class_exists( 'BizCity_Twin_Vault' ) && method_exists( 'BizCity_Twin_Vault', 'folders_raw' ) ? BizCity_Twin_Vault::folders_raw() : ( class_exists( 'BizCity_Twin_Vault' ) && function_exists( 'get_option' ) ? get_option( BizCity_Twin_Vault::FOLDER_OPTION, array() ) : array() );
 		return array_values( array_map( static function ( $f ) { return (string) ( is_array( $f ) ? ( $f['n'] ?? '' ) : '' ); }, is_array( $raw ) ? $raw : array() ) );
 	}
 
 	private static function save_folders( array $list ): void {
 		if ( isset( self::$readers['save_folders'] ) ) { call_user_func( self::$readers['save_folders'], $list ); return; }
+		if ( class_exists( 'BizCity_Twin_Vault' ) && method_exists( 'BizCity_Twin_Vault', 'folders_save' ) ) { BizCity_Twin_Vault::folders_save( array_values( $list ) ); return; } // PHASE-0.153 V1b
 		if ( class_exists( 'BizCity_Twin_Vault' ) && function_exists( 'update_option' ) ) { update_option( BizCity_Twin_Vault::FOLDER_OPTION, array_values( $list ), false ); }
 	}
 }

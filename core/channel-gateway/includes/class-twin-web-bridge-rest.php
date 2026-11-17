@@ -172,7 +172,7 @@ final class BizCity_Twin_Web_Bridge_REST {
 			'query'      => mb_substr( (string) ( $body['query'] ?? '' ), 0, 2000 ),
 			'max_blocks' => (int) ( $body['max_blocks'] ?? 0 ) ?: null,
 			'max_chars'  => (int) ( $body['max_chars'] ?? 0 ) ?: null,
-			'notebooks'  => false, // the cell retrieves from its own copy of the notebooks
+			'vault'      => false, // the cell retrieves on its own (vault.* tools) — PHASE-0.151 G (was 'notebooks' => false)
 		) );
 		$profile = (array) BizCity_Guru_Context_Resolver::profile( $cid );
 		unset( $profile['_character_id'] );

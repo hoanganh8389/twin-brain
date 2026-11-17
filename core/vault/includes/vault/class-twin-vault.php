@@ -76,6 +76,7 @@ final class BizCity_Twin_Vault {
 		}
 		self::$hooked = true;
 		add_action( 'rest_api_init', array( __CLASS__, 'routes' ) );
+		add_filter( 'rest_pre_dispatch', array( __CLASS__, 'rest_kho_owner' ), 5, 3 ); // PHASE-0.153 V1b — whose Kho a bizcity-vault/v1 request acts on
 		add_action( 'bizcity_mcp_register_tools', array( __CLASS__, 'register_tools' ) );
 		if ( function_exists( 'did_action' ) && did_action( 'bizcity_mcp_register_tools' ) ) {
 			self::register_tools();
@@ -206,7 +207,19 @@ final class BizCity_Twin_Vault {
 			}
 		}
 		$folder = self::clean_folder( $fm_in['folder'] ?? '' ); // the folder a note is filed in (D134-10); a bad shape is dropped
-		$fm     = array( 'schema' => 'twin-vault@1', 'type' => 'note', 'title' => mb_substr( $title, 0, 160 ) ) + $fm + ( '' !== $folder ? array( 'folder' => $folder ) : array() ) + array( 'source_ref' => $source_ref, 'rev' => max( 1, $rev ), 'created' => $created, 'updated' => $now );
+		// [2026-11-15 10:50 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V2 — a note of a space (nhóm / khách) keeps which space it is: write() lets these
+		// keys through ONLY for a path inside that very space (BizCity_Vault_Spaces::base_path), so no note can claim a space it is not in
+		$sp = array();
+		if ( isset( $fm_in['space'] ) && class_exists( 'BizCity_Vault_Spaces' ) && '' !== BizCity_Vault_Spaces::id( (string) $fm_in['space'] ) ) {
+			$sp['space'] = BizCity_Vault_Spaces::id( (string) $fm_in['space'] );
+			if ( '' !== trim( (string) ( $fm_in['space_label'] ?? '' ) ) ) {
+				$sp['space_label'] = mb_substr( trim( (string) $fm_in['space_label'] ), 0, 80 );
+			}
+			if ( in_array( (string) ( $fm_in['section'] ?? '' ), BizCity_Vault_Spaces::SECTIONS, true ) ) {
+				$sp['section'] = (string) $fm_in['section'];
+			}
+		}
+		$fm     = array( 'schema' => 'twin-vault@1', 'type' => 'note', 'title' => mb_substr( $title, 0, 160 ) ) + $fm + $sp + ( '' !== $folder ? array( 'folder' => $folder ) : array() ) + array( 'source_ref' => $source_ref, 'rev' => max( 1, $rev ), 'created' => $created, 'updated' => $now );
 		$body = trim( (string) preg_replace( "/\r\n?/", "\n", BizCity_Brain_Vault_Store::split_frontmatter( $md )['body'] ) );
 		return "---\n" . BizCity_Brain_Vault_Store::emit_yaml( $fm ) . "---\n" . $body . "\n";
 	}
@@ -217,9 +230,42 @@ final class BizCity_Twin_Vault {
 		return 1 === preg_match( '#^[0-9]{2}(/[a-z0-9-]{1,40})?$#', $f ) ? $f : '';
 	}
 
-	/** The folder list: the option when set, else the defaults. Each {n,label,icon}, sorted by number. */
+	/**
+	 * [2026-11-15 10:40 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V1b (doc 00 §4.1b) — the Kho owner this request acts on (BizCity_Vault_Owner);
+	 * 0 when that class is not loaded (tests, old callers): everything behaves as before 0.153.
+	 */
+	public static function kho_owner(): int {
+		return class_exists( 'BizCity_Vault_Owner' ) ? BizCity_Vault_Owner::current() : 0;
+	}
+
+	/** Is the acting Kho the pre-0.153 one (legacy site owner, or no owner known)? It keeps the site option and the old library folder (Q153-8). */
+	private static function kho_is_legacy(): bool {
+		$o = self::kho_owner();
+		return $o <= 0 || ( class_exists( 'BizCity_Vault_Owner' ) && BizCity_Vault_Owner::is_legacy( $o ) );
+	}
+
+	/** The saved folder list of the acting Kho: the site option (legacy owner) or the owner's user meta. */
+	public static function folders_raw() {
+		if ( self::kho_is_legacy() ) {
+			return function_exists( 'get_option' ) ? get_option( self::FOLDER_OPTION, array() ) : array();
+		}
+		return function_exists( 'get_user_meta' ) ? get_user_meta( self::kho_owner(), self::FOLDER_OPTION, true ) : array();
+	}
+
+	/** Save the folder list of the acting Kho (site option for the legacy owner, user meta for every other owner). */
+	public static function folders_save( array $list ): void {
+		if ( self::kho_is_legacy() ) {
+			update_option( self::FOLDER_OPTION, $list, false );
+			return;
+		}
+		if ( function_exists( 'update_user_meta' ) ) {
+			update_user_meta( self::kho_owner(), self::FOLDER_OPTION, $list );
+		}
+	}
+
+	/** The folder list of the acting Kho: what it saved, else the defaults. Each {n,label,icon}, sorted by number. */
 	public static function folders(): array {
-		$raw = function_exists( 'get_option' ) ? get_option( self::FOLDER_OPTION, array() ) : array();
+		$raw = self::folders_raw(); // PHASE-0.153 V1b — per Kho owner (was the site option for everyone)
 		$out = array();
 		$defaults = array();
 		foreach ( self::DEFAULT_FOLDERS as $d ) {
@@ -348,7 +394,7 @@ final class BizCity_Twin_Vault {
 		}
 		$f      = array( 'n' => $n, 'label' => $label, 'icon' => mb_substr( trim( $icon ), 0, 8 ) ?: '📁', 'access' => in_array( $access, self::ACCESS, true ) ? $access : 'staff' );
 		$list[] = $f;
-		update_option( self::FOLDER_OPTION, $list, false );
+		self::folders_save( $list ); // PHASE-0.153 V1b
 		return $f;
 	}
 
@@ -389,7 +435,7 @@ final class BizCity_Twin_Vault {
 			if ( array_key_exists( 'aliases', $patch ) ) { // PHASE-0.136 — the names a person / the assistant may use for this folder
 				$list[ $i ]['aliases'] = self::clean_aliases( $patch['aliases'] );
 			}
-			update_option( self::FOLDER_OPTION, $list, false );
+			self::folders_save( $list ); // PHASE-0.153 V1b
 			self::packs_changed(); // PHASE-0.148 W2 S148-C11 — label / access / Guru mapping changed what the assistant may read
 			return $list[ $i ];
 		}
@@ -762,6 +808,11 @@ final class BizCity_Twin_Vault {
 	 * non-staff account keeps its own rows exactly as before.
 	 */
 	private static function item_visible( string $id, string $vfolder, string $role, array $map ): bool {
+		// [2026-11-15 10:50 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V2 — a note of a space (nhóm / khách, /khong-gian/…) is the Kho owner's only (staff
+		// members of a group: V5)
+		if ( 0 === strpos( $id, 'lib:' . ( class_exists( 'BizCity_Vault_Spaces' ) ? BizCity_Vault_Spaces::ROOT : '/khong-gian/' ) ) ) {
+			return 'owner' === $role;
+		}
 		if ( 'public' === $role && 0 === strpos( $id, 'src:' ) ) {
 			return true;
 		}
@@ -789,8 +840,27 @@ final class BizCity_Twin_Vault {
 		if ( 'owner' === $role ) {
 			return $items;
 		}
-		$map = self::access_map();
-		return array_values( array_filter( $items, static function ( $i ) use ( $role, $map ) { return self::item_visible( (string) ( $i['id'] ?? '' ), (string) ( $i['vault_folder'] ?? '' ), $role, $map ); } ) );
+		$map  = self::access_map();
+		$tags = self::staff_tags_of( $ctx, $role );
+		// [2026-11-17 11:36 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 (§4.3, Q153-4) — an item of a space follows the space rule first: a customer space is the
+		// Kho owner's only (its src: files were visible to staff as unfiled rows), a group space is open to the staff assigned to that group.
+		return array_values( array_filter( $items, static function ( $i ) use ( $role, $map, $tags ) {
+			$sp = (string) ( $i['space'] ?? '' );
+			if ( '' !== $sp && class_exists( 'BizCity_Vault_Spaces' ) ) {
+				return BizCity_Vault_Spaces::tag_visible( $sp, $role, $tags );
+			}
+			return self::item_visible( (string) ( $i['id'] ?? '' ), (string) ( $i['vault_folder'] ?? '' ), $role, $map );
+		} ) );
+	}
+
+	/** PHASE-0.153 — the group space tags a staff reader may see (Q153-4); [] for any other role. */
+	private static function staff_tags_of( array $ctx, string $role ): array {
+		if ( 'staff' !== $role || ! class_exists( 'BizCity_Vault_Spaces' ) || ! class_exists( 'BizCity_Vault_Owner' ) ) {
+			return array();
+		}
+		$user = (int) ( $ctx['user_id'] ?? 0 );
+		$user = $user > 0 ? $user : ( function_exists( 'get_current_user_id' ) ? (int) get_current_user_id() : 0 );
+		return BizCity_Vault_Spaces::staff_space_tags( $user, (int) BizCity_Vault_Owner::current() );
 	}
 
 	/** Ids (lib: / src:) filed in a folder this role may not see — for the graph, which is built from other sources. */
@@ -809,6 +879,16 @@ final class BizCity_Twin_Vault {
 			}
 		}
 		$ids = array();
+		// [2026-11-15 10:50 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V2 — notes of a space (nhóm / khách) are the Kho owner's only
+		if ( 'owner' !== $role ) {
+			$tags = self::staff_tags_of( $ctx, $role ); // PHASE-0.153 Q153-4 — staff keep the notes of the groups they are assigned to
+			foreach ( self::lib_files() as $f ) {
+				if ( class_exists( 'BizCity_Vault_Spaces' ) && BizCity_Vault_Spaces::is_space_path( (string) $f['path'] )
+					&& ! BizCity_Vault_Spaces::tag_visible( BizCity_Vault_Spaces::tag( (string) ( $f['fm']['space'] ?? '' ) ), $role, $tags ) ) {
+					$ids[ 'lib:' . $f['path'] ] = 1;
+				}
+			}
+		}
 		// [2026-10-25 Johnny Chu - Chu Hoàng Anh] PHASE-0.126 R126-SEC M4 — the public view also drops unfiled library notes
 		// (unfiled = staff level); its own src: rows stay (see item_visible).
 		$public = 'public' === $role;
@@ -840,22 +920,58 @@ final class BizCity_Twin_Vault {
 
 	// ── library files (the skills namespace of the Vault Store, same paths) ─
 
-	private static function lib_dir(): string {
+	/** The site-wide skills library folder (skills + tools stay shared, Q153-9); no trailing slash. */
+	private static function skills_dir(): string {
 		return class_exists( 'BizCity_Brain_Vault_Store' ) ? rtrim( BizCity_Brain_Vault_Store::namespace_dir( 'skills' ), '/' ) : '';
 	}
 
-	/** @var array|null this request's library scan (a note view reads it for title index + backlinks) */
+	/**
+	 * The library folder of the acting Kho; no trailing slash.
+	 * [2026-11-15 10:40 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V1b — notes / documents of each user id live in <root>/{blog}/u{id}/library/;
+	 * the legacy site owner keeps the shared folder (uploads/bizcity-skills/{blog}/), so nothing moves (Q153-8). $create makes the owner's folder.
+	 */
+	private static function lib_dir( bool $create = false ): string {
+		if ( ! class_exists( 'BizCity_Brain_Vault_Store' ) || self::kho_is_legacy() || ! method_exists( 'BizCity_Brain_Vault_Store', 'user_dir' ) ) {
+			return self::skills_dir();
+		}
+		$dir = $create ? BizCity_Brain_Vault_Store::ensure_user( 'library', self::kho_owner() ) : BizCity_Brain_Vault_Store::user_dir( 'library', self::kho_owner() );
+		return rtrim( $dir, '/' );
+	}
+
+	/** The folder a library path lives in: /skills/… and /tools/… in the shared skills library, everything else in the Kho of the acting owner. */
+	private static function lib_base_of( string $path ): string {
+		return 'skill' === self::lib_type( $path ) ? self::skills_dir() : self::lib_dir();
+	}
+
+	/** @var array<int,array> this request's library scan per Kho owner (a note view reads it for title index + backlinks) */
 	private static $files = null;
 
-	/** Every .md of the library (internal "_" folders skipped), ≤ MAX_FILES: [{path, fm, md, mtime}]. Scanned once per request. */
+	/**
+	 * Every .md of the acting Kho's library (internal "_" folders skipped), ≤ MAX_FILES: [{path, fm, md, mtime}]. Scanned once per request and owner.
+	 * PHASE-0.153 V1b — a non-legacy owner sees their own library + the shared /skills and /tools.
+	 */
 	public static function lib_files(): array {
-		if ( null !== self::$files ) {
-			return self::$files;
+		$key = self::kho_owner();
+		if ( is_array( self::$files ) && isset( self::$files[ $key ] ) ) {
+			return self::$files[ $key ];
 		}
-		$base = self::lib_dir();
-		$out  = array();
+		$out = array();
+		if ( self::kho_is_legacy() ) {
+			self::lib_scan( self::skills_dir(), $out, null );
+		} else {
+			self::lib_scan( self::lib_dir(), $out, 'note' );
+			self::lib_scan( self::skills_dir(), $out, 'skill' );
+		}
+		usort( $out, static function ( $a, $b ) { return strcmp( $a['path'], $b['path'] ); } );
+		self::$files         = is_array( self::$files ) ? self::$files : array();
+		self::$files[ $key ] = $out;
+		return $out;
+	}
+
+	/** Add the .md files under $base to $out (≤ MAX_FILES in all); $only = 'note' | 'skill' keeps paths of that library type, null keeps all. */
+	private static function lib_scan( string $base, array &$out, ?string $only ): void {
 		if ( '' === $base || ! is_dir( $base ) ) {
-			return self::$files = $out;
+			return;
 		}
 		$it = new RecursiveIteratorIterator( new RecursiveCallbackFilterIterator( new RecursiveDirectoryIterator( $base, FilesystemIterator::SKIP_DOTS ), static function ( $f ) {
 			return 0 !== strpos( $f->getFilename(), '_' ) && ( $f->isDir() || 'md' === strtolower( $f->getExtension() ) ) && ! $f->isLink();
@@ -865,18 +981,16 @@ final class BizCity_Twin_Vault {
 				break;
 			}
 			$path = '/' . ltrim( str_replace( '\\', '/', substr( $f->getPathname(), strlen( $base ) ) ), '/' );
-			if ( '' === self::clean_path( $path ) || $f->getSize() > self::MAX_MD ) {
+			if ( '' === self::clean_path( $path ) || $f->getSize() > self::MAX_MD || ( null !== $only && self::lib_type( $path ) !== $only ) ) {
 				continue;
 			}
 			$split = BizCity_Brain_Vault_Store::split_frontmatter( (string) file_get_contents( $f->getPathname() ) );
 			$out[] = array( 'path' => $path, 'fm' => $split['frontmatter'], 'md' => $split['body'], 'mtime' => (int) $f->getMTime() );
 		}
-		usort( $out, static function ( $a, $b ) { return strcmp( $a['path'], $b['path'] ); } );
-		return self::$files = $out;
 	}
 
 	private static function lib_read( string $path ): ?array {
-		$base = self::lib_dir();
+		$base = self::lib_base_of( $path ); // PHASE-0.153 V1b
 		$abs  = $base . $path;
 		if ( '' === $base || ! BizCity_Brain_Vault_Store::inside( $base, $abs ) || ! is_file( $abs ) ) {
 			return null;
@@ -918,6 +1032,16 @@ final class BizCity_Twin_Vault {
 		return $res;
 	}
 
+	/** PHASE-0.153 — the sp-g-… / sp-c-… tag of a Journal row, '' when it belongs to no space. Pure. */
+	public static function space_tag_of_row( array $e ): string {
+		foreach ( (array) ( $e['tags'] ?? array() ) as $tg ) {
+			if ( 1 === preg_match( '/^sp-[gc]-[0-9a-f]{12}$/', (string) $tg ) ) {
+				return (string) $tg;
+			}
+		}
+		return '';
+	}
+
 	private static function row_item( array $e, string $type ): array {
 		$item = array( 'id' => 'src:' . (string) $e['ref_code'], 'type' => $type, 'title' => (string) ( $e['meta']['title'] ?? '' ) ?: (string) $e['title'], 'source_ref' => (string) ( $e['resource']['source_ref'] ?? $e['ref_code'] ), 'entry_id' => (int) $e['entry_id'], 'vault_folder' => self::clean_folder( $e['meta']['folder'] ?? '' ), 'people' => ! empty( $e['meta']['people'] ) || (int) ( $e['contact_id'] ?? 0 ) > 0, 'updated_at' => (string) ( $e['updated_at'] ?? '' ), 'has_markdown' => ! empty( $e['resource']['representations'] ) );
 		// [2026-11-14 03:16 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-C5 — where the file came from, for the folder table's "Nguồn" column (one word, from origin.surface)
@@ -930,6 +1054,17 @@ final class BizCity_Twin_Vault {
 			$item['level']    = $level;
 			$item['pipeline'] = BizCity_Journal_Pipeline::of( $e, $level );
 		}
+		// [2026-11-17 11:02 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V5 — the space (ngăn) a row belongs to: its sp-g-… / sp-c-… tag; a group row also names its group
+		foreach ( (array) ( $e['tags'] ?? array() ) as $tg ) {
+			if ( 1 === preg_match( '/^sp-[gc]-[0-9a-f]{12}$/', (string) $tg ) ) {
+				$item['space'] = (string) $tg;
+				$gname         = is_array( $e['group'] ?? null ) ? trim( (string) ( $e['group']['name'] ?? '' ) ) : '';
+				if ( '' !== $gname ) {
+					$item['space_label'] = $gname;
+				}
+				break;
+			}
+		}
 		return $item;
 	}
 
@@ -940,7 +1075,61 @@ final class BizCity_Twin_Vault {
 			$own            = strtolower( (string) ( $f['fm']['source'] ?? '' ) );
 			$item['source'] = in_array( $own, array( 'zalo', 'zalo_group', 'facebook', 'web_upload', 'editor', 'assistant', 'other' ), true ) ? $own : ( 0 === strpos( (string) $f['path'], 'note/zalo-' ) ? 'zalo' : 'editor' );
 		}
+		// PHASE-0.153 V5 — a space note (/khong-gian/…) carries its space tag + label
+		if ( class_exists( 'BizCity_Vault_Spaces' ) && BizCity_Vault_Spaces::is_space_path( (string) $f['path'] ) ) {
+			$tag = BizCity_Vault_Spaces::tag( (string) ( $f['fm']['space'] ?? '' ) );
+			if ( '' !== $tag ) {
+				$item['space'] = $tag;
+				if ( '' !== trim( (string) ( $f['fm']['space_label'] ?? '' ) ) ) {
+					$item['space_label'] = trim( (string) $f['fm']['space_label'] );
+				}
+			}
+		}
 		return $item;
+	}
+
+	/**
+	 * [2026-11-17 11:02 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V5 — the "Không gian" group of the tree (owner only): one entry per space found in the tree's items,
+	 * groups first then customers, newest first inside. Pure over the roots.
+	 *
+	 * @return array<int,array{tag:string,type:string,label:string,ids:string[],notes:int,files:int,max_files:int}>
+	 */
+	public static function space_groups( array $roots ): array {
+		$by = array();
+		foreach ( $roots as $r ) {
+			foreach ( (array) ( $r['children'] ?? array() ) as $c ) {
+				$tag = (string) ( $c['space'] ?? '' );
+				if ( 1 !== preg_match( '/^sp-([gc])-([0-9a-f]{12})$/', $tag, $m ) ) {
+					continue;
+				}
+				if ( ! isset( $by[ $tag ] ) ) {
+					$type        = 'g' === $m[1] ? 'group' : 'contact';
+					$by[ $tag ]  = array( 'tag' => $tag, 'type' => $type, 'label' => '', 'ids' => array(), 'notes' => 0, 'files' => 0, 'max_files' => 'group' === $type ? 500 : 10, 'updated_at' => '' );
+				}
+				$by[ $tag ]['ids'][] = (string) $c['id'];
+				if ( 'note' === (string) ( $c['type'] ?? '' ) && 0 === strpos( (string) $c['id'], 'lib:' ) ) {
+					++$by[ $tag ]['notes'];
+				} else {
+					++$by[ $tag ]['files'];
+				}
+				if ( '' === $by[ $tag ]['label'] && '' !== (string) ( $c['space_label'] ?? '' ) ) {
+					$by[ $tag ]['label'] = (string) $c['space_label'];
+				}
+				if ( strcmp( (string) ( $c['updated_at'] ?? '' ), $by[ $tag ]['updated_at'] ) > 0 ) {
+					$by[ $tag ]['updated_at'] = (string) $c['updated_at'];
+				}
+			}
+		}
+		foreach ( $by as $tag => $s ) {
+			if ( '' === $s['label'] ) {
+				$by[ $tag ]['label'] = ( 'group' === $s['type'] ? 'Nhóm ' : 'Khách ' ) . '…' . substr( $tag, -4 );
+			}
+		}
+		$out = array_values( $by );
+		usort( $out, static function ( $a, $b ) {
+			return 'group' === $a['type'] && 'group' !== $b['type'] ? -1 : ( 'group' !== $a['type'] && 'group' === $b['type'] ? 1 : strcmp( $b['updated_at'], $a['updated_at'] ) );
+		} );
+		return $out;
 	}
 
 	/** The six roots with counts and their newest children (≤ 100 rows each + every library file). */
@@ -962,7 +1151,27 @@ final class BizCity_Twin_Vault {
 			$out['folders']['list'] = array_values( array_filter( $out['folders']['list'], static function ( $f ) use ( $role ) { return self::access_allows( (string) $f['access'], $role ); } ) );
 			if ( 'owner' === $role ) {
 				$out['gurus'] = self::guru_choices(); // the folder sheet's "Guru dùng thư mục này" (D134-20)
+				$out['spaces'] = self::space_groups( $roots ); // PHASE-0.153 V5 — "Không gian": ngăn nhóm / khách (chỉ chủ Kho)
+			} elseif ( 'staff' === $role ) {
+				$out['spaces'] = self::space_groups( $roots ); // [2026-11-17 11:36 AM Johnny Chu - Chu Hoàng Anh] Q153-4 — the roots are already gated: only the groups this staff member is assigned to
 			}
+			$out['kho'] = self::kho_info(); // PHASE-0.153 V5 — whose Kho this is + the admin picker
+		}
+		return $out;
+	}
+
+	/** PHASE-0.153 V5 — {owner, name, own, owners[] (admin only)}: the head of the tree says whose Kho is shown; an admin can switch (as_user). */
+	public static function kho_info(): array {
+		$owner = class_exists( 'BizCity_Vault_Owner' ) ? (int) BizCity_Vault_Owner::current() : 0;
+		$u     = $owner > 0 && function_exists( 'get_userdata' ) ? get_userdata( $owner ) : null;
+		$me    = function_exists( 'get_current_user_id' ) ? (int) get_current_user_id() : 0;
+		$out   = array( 'owner' => $owner, 'name' => $u ? (string) $u->display_name : '', 'own' => $owner > 0 && $owner === $me );
+		if ( function_exists( 'current_user_can' ) && current_user_can( 'manage_options' ) && class_exists( 'BizCity_Vault_Assistant_Page' ) ) {
+			$list = BizCity_Vault_Assistant_Page::owners();
+			if ( $me > 0 && ! in_array( $me, array_column( $list, 'id' ), true ) && $u_me = get_userdata( $me ) ) {
+				array_unshift( $list, array( 'id' => $me, 'name' => (string) $u_me->display_name ) );
+			}
+			$out['owners'] = $list;
 		}
 		return $out;
 	}
@@ -1029,7 +1238,8 @@ final class BizCity_Twin_Vault {
 	/** One note (twin-vault@1 §1). @return array|WP_Error */
 	public static function note( string $id, array $ctx, int $offset = 0, int $limit = 6000 ) {
 		$res = self::note_open( $id, $ctx, $offset, $limit );
-		if ( is_array( $res ) && ! self::item_visible( (string) ( $res['id'] ?? '' ), (string) ( $res['vault_folder'] ?? '' ), self::role_of( $ctx ), self::access_map() ) ) {
+		// [2026-11-17 11:36 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 §4.3 — opening one item by id follows the same rule as the tree (gate): space first, then folder
+		if ( is_array( $res ) && array() === self::gate( array( array( 'id' => (string) ( $res['id'] ?? '' ), 'vault_folder' => (string) ( $res['vault_folder'] ?? '' ), 'space' => (string) ( $res['space'] ?? '' ) ) ), $ctx ) ) {
 			return new WP_Error( 'vault_folder_denied', 'Thư mục này chỉ dành cho chủ.', array( 'status' => 403, 'hint' => 'Nhờ chủ cấp quyền cho thư mục này.', 'help_code' => 'twin_vault' ) );
 		}
 		return $res;
@@ -1076,6 +1286,7 @@ final class BizCity_Twin_Vault {
 			$titles = self::title_index();
 			$out    = self::links_of( $f['md'], $f['fm'] );
 			return array(
+				'space' => class_exists( 'BizCity_Vault_Spaces' ) && BizCity_Vault_Spaces::is_space_path( (string) $f['path'] ) ? BizCity_Vault_Spaces::tag( (string) ( $f['fm']['space'] ?? '' ) ) : '', // PHASE-0.153
 				'contract' => self::CONTRACT, 'id' => 'lib:' . $f['path'], 'type' => self::lib_type( $f['path'] ), 'title' => self::title_of( $f['fm'], $f['md'], $f['path'] ),
 				'path' => $f['path'], 'source_ref' => (string) ( $f['fm']['source_ref'] ?? '' ), 'entry_id' => 0, 'frontmatter' => $f['fm'], 'vault_folder' => self::clean_folder( $f['fm']['folder'] ?? '' ),
 				'markdown' => mb_substr( $f['md'], max( 0, $offset ), max( 500, min( 6000, $limit ) ) ), 'chars' => mb_strlen( $f['md'] ),
@@ -1096,6 +1307,7 @@ final class BizCity_Twin_Vault {
 		$md   = is_wp_error( $read ) ? '' : (string) $read['markdown'];
 		$type = self::row_type( (string) $row['kind'], (string) ( $row['layer'] ?? '' ), (int) ( $row['original']['attachment_id'] ?? 0 ) > 0 ) ?: 'document';
 		return array(
+			'space' => self::space_tag_of_row( $row ), // PHASE-0.153
 			'contract' => self::CONTRACT, 'id' => 'src:' . $row['ref_code'], 'type' => $type, 'title' => (string) ( $row['meta']['title'] ?? '' ) ?: (string) $row['title'],
 			'source_ref' => (string) ( $row['resource']['source_ref'] ?? $row['ref_code'] ), 'entry_id' => (int) $row['entry_id'], 'vault_folder' => self::clean_folder( $row['meta']['folder'] ?? '' ),
 			// [2026-11-14 03:16 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.149 S149-C5 — a reading written before `source` existed still shows it: projected from the row on read (the file is not rewritten)
@@ -1332,7 +1544,7 @@ final class BizCity_Twin_Vault {
 		if ( '' === $path || 'note' !== self::lib_type( $path ) ) {
 			return new WP_Error( 'vault_path_refused', 'Chỉ lưu được vào mục Ghi chú (kỹ năng sửa bằng "Sửa từng bước").', array( 'status' => 400, 'hint' => 'Chọn thư mục /note, /nhat-ky hoặc một thư mục ghi chú.', 'help_code' => 'twin_vault' ) );
 		}
-		$base = self::lib_dir();
+		$base = self::lib_dir( true ); // PHASE-0.153 V1b — the acting owner's library (created on the first note)
 		$abs  = $base . $path;
 		if ( '' === $base || ! BizCity_Brain_Vault_Store::inside( $base, $abs ) ) {
 			return new WP_Error( 'vault_unavailable', 'Kho tri thức chưa sẵn sàng trên site này.', array( 'status' => 503, 'help_code' => 'twin_vault' ) );
@@ -1349,6 +1561,18 @@ final class BizCity_Twin_Vault {
 		$now  = gmdate( 'Y-m-d\TH:i:s\Z' );
 		$row  = null;
 		$fm_in = is_array( $args['frontmatter'] ?? null ) ? $args['frontmatter'] : array();
+		// [2026-11-15 10:50 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V2 — space keys only for a note inside that space's own folder; an edit keeps the space it had
+		$sp_id = class_exists( 'BizCity_Vault_Spaces' ) ? BizCity_Vault_Spaces::id( (string) ( $fm_in['space'] ?? ( $cur['fm']['space'] ?? '' ) ) ) : '';
+		if ( '' === $sp_id || 0 !== strpos( $path, BizCity_Vault_Spaces::base_path( $sp_id ) ) ) {
+			unset( $fm_in['space'], $fm_in['space_label'], $fm_in['section'] );
+		} else {
+			$fm_in['space'] = $sp_id;
+			foreach ( array( 'space_label', 'section' ) as $k ) {
+				if ( ! isset( $fm_in[ $k ] ) && isset( $cur['fm'][ $k ] ) ) {
+					$fm_in[ $k ] = $cur['fm'][ $k ];
+				}
+			}
+		}
 		if ( array_key_exists( 'folder', $args ) ) {
 			$fm_in['folder'] = self::resolve_folder( $args['folder'], self::folders() ); // PHASE-0.136: a name works too
 		}
@@ -1515,7 +1739,7 @@ final class BizCity_Twin_Vault {
 		$idem     = 'vault-append:' . $blog . ':' . $nb_id . ':' . ( '' !== $msg ? $msg : substr( md5( $q . "\n" . $ans ), 0, 16 ) );
 		$settings = (array) ( $nb['settings'] ?? array() );
 		$pool     = (array) ( $settings['vault_pool'] ?? array() );
-		$base     = self::lib_dir();
+		$base     = self::lib_dir( true ); // PHASE-0.153 V1b — the acting owner's library
 		if ( '' !== $base && ! is_dir( $base ) ) { // a site that never saved a library note has no folder yet
 			function_exists( 'wp_mkdir_p' ) ? wp_mkdir_p( $base ) : @mkdir( $base, 0755, true ); // phpcs:ignore
 		}
@@ -1670,11 +1894,11 @@ final class BizCity_Twin_Vault {
 			}
 			$out = "---\n" . BizCity_Brain_Vault_Store::emit_yaml( $fm ) . "---\n" . trim( (string) $f['md'] ) . "\n";
 			if ( self::POOL_KIND === (string) ( $fm['kind'] ?? '' ) ) { // PHASE-0.143: a pool keeps its entries[] (one JSON per line) and its notebook follows the new folder
-				$pp  = self::pool_parse( (string) file_get_contents( self::lib_dir() . $f['path'] ) );
+				$pp  = self::pool_parse( (string) file_get_contents( self::lib_base_of( $f['path'] ) . $f['path'] ) ); // PHASE-0.153 V1b
 				$out = "---\n" . self::pool_rewrite( $fm, $pp['entries'] ) . "---\n" . trim( (string) $f['md'] ) . "\n";
 				self::pool_follow_folder( (string) ( $fm['notebook_ref'] ?? '' ), $folder );
 			}
-			if ( false === @file_put_contents( self::lib_dir() . $f['path'], $out, LOCK_EX ) ) { // phpcs:ignore
+			if ( false === @file_put_contents( self::lib_base_of( $f['path'] ) . $f['path'], $out, LOCK_EX ) ) { // phpcs:ignore — PHASE-0.153 V1b
 				return new WP_Error( 'vault_write_failed', 'Không ghi được ghi chú.', array( 'status' => 500, 'help_code' => 'twin_vault' ) );
 			}
 			self::$files = null;
@@ -1690,7 +1914,8 @@ final class BizCity_Twin_Vault {
 		if ( ! $row ) {
 			return new WP_Error( 'vault_not_found', 'Không có ghi chú này trong Kho tri thức.', array( 'status' => 404, 'help_code' => 'twin_vault' ) );
 		}
-		if ( ! self::item_visible( 'src:' . (string) $row['ref_code'], self::clean_folder( $row['meta']['folder'] ?? '' ), $role, $map ) ) {
+		if ( ! self::item_visible( 'src:' . (string) $row['ref_code'], self::clean_folder( $row['meta']['folder'] ?? '' ), $role, $map )
+			|| ( '' !== self::space_tag_of_row( $row ) && array() === self::gate( array( array( 'id' => 'src:' . (string) $row['ref_code'], 'space' => self::space_tag_of_row( $row ) ) ), $ctx ) ) ) { // PHASE-0.153 — a space item moves only for who may see it
 			return $denied;
 		}
 		$res = BizCity_Journal_Entry_Meta::set( self::owner( $ctx ), array( 'entry_id' => (int) $row['entry_id'] ), array( 'folder' => $folder ), array( 'merge' => true, 'source' => 'person' === (string) ( $ctx['role'] ?? '' ) ? 'owner_edit' : 'cell_tool' ) );
@@ -1769,7 +1994,7 @@ final class BizCity_Twin_Vault {
 	/** [2026-10-24 09:38 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.134 (UI gap) — a skill hub ⇒ its real file: /skills/<name>/SKILL.md (Agent Skills layout) when it exists, else /skills/<name>.md. */
 	private static function skill_id( string $name ): string {
 		$name = (string) preg_replace( '/[^a-z0-9-]/', '', strtolower( $name ) );
-		$base = self::lib_dir();
+		$base = self::skills_dir(); // PHASE-0.153 V1b — skills stay shared
 		return 'lib:' . ( '' !== $base && is_file( $base . '/skills/' . $name . '/SKILL.md' ) ? '/skills/' . $name . '/SKILL.md' : '/skills/' . $name . '.md' );
 	}
 
@@ -1828,6 +2053,15 @@ final class BizCity_Twin_Vault {
 		foreach ( array( '/tree' => 'rest_tree', '/list' => 'rest_list', '/search' => 'rest_search', '/graph' => 'rest_graph' ) as $route => $cb ) {
 			register_rest_route( self::NS, $route, array( 'methods' => 'GET', 'callback' => array( __CLASS__, $cb ), 'permission_callback' => $read ) );
 		}
+		// [2026-11-15 10:50 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V2 — the spaces (ngăn nhóm / khách) of the Kho: owner / admin only
+		register_rest_route( self::NS, '/spaces', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'rest_spaces' ), 'permission_callback' => $read ) );
+		register_rest_route( self::NS, '/spaces/notes', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'rest_space_notes' ), 'permission_callback' => $read ) );
+		// [2026-11-15 11:05 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V3 — the matrix "lưu gì, vào đâu" of the acting assistant owner (vault-policy@1)
+		register_rest_route( self::NS, '/policy', array(
+			array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'rest_policy' ), 'permission_callback' => $read ),
+			array( 'methods' => 'PUT', 'callback' => array( __CLASS__, 'rest_policy_save' ), 'permission_callback' => $write ),
+		) );
+		register_rest_route( self::NS, '/policy/space', array( 'methods' => 'PUT', 'callback' => array( __CLASS__, 'rest_policy_space' ), 'permission_callback' => $write ) );
 		register_rest_route( self::NS, '/move', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'rest_move' ), 'permission_callback' => $write ) );
 		register_rest_route( self::NS, '/folder', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'rest_folder_add' ), 'permission_callback' => $write ) );
 		register_rest_route( self::NS, '/folder/(?P<n>[0-9]{2})', array( 'methods' => 'PATCH', 'callback' => array( __CLASS__, 'rest_folder_rename' ), 'permission_callback' => $write ) );
@@ -1836,6 +2070,114 @@ final class BizCity_Twin_Vault {
 			array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'rest_note' ), 'permission_callback' => $read ),
 			array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'rest_write' ), 'permission_callback' => $write ),
 		) );
+	}
+
+	/**
+	 * [2026-11-15 10:40 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V1b (Q153-6) — before a bizcity-vault/v1 route runs, the SITE decides whose Kho it acts
+	 * on (BizCity_Vault_Owner::for_rest): an admin may pass `as_user`; a user with their own assistant gets their own Kho; anyone else the legacy one.
+	 *
+	 * @param mixed $result
+	 * @return mixed $result unchanged
+	 */
+	public static function rest_kho_owner( $result, $server = null, $request = null ) {
+		if ( ! class_exists( 'BizCity_Vault_Owner' ) || ! is_object( $request ) || ! method_exists( $request, 'get_route' ) ) {
+			return $result;
+		}
+		if ( 0 !== strpos( (string) $request->get_route(), '/' . self::NS ) ) {
+			return $result;
+		}
+		BizCity_Vault_Owner::for_rest( (int) $request->get_param( 'as_user' ) );
+		return $result;
+	}
+
+	/** The acting assistant owner for a policy request, or a WP_Error when the caller has no assistant of their own (PHASE-0.153 V3). */
+	private static function policy_owner() {
+		if ( ! class_exists( 'BizCity_Vault_Policy' ) || ! class_exists( 'BizCity_Vault_Owner' ) || ! BizCity_Vault_Owner::acts_as_owner() ) {
+			return new WP_Error( 'policy_denied', 'Chỉ chủ trợ lý (hoặc admin) chỉnh được ma trận lưu.', array( 'status' => 403, 'hint' => 'Ghép một số Zalo cho tài khoản của bạn để có trợ lý riêng.', 'help_code' => 'twin_vault' ) );
+		}
+		return BizCity_Vault_Owner::current();
+	}
+
+	/** A number id as the policy stores it (no `rzh:`), '' when none. */
+	private static function policy_account( $raw ): string {
+		$a = preg_replace( '/[^A-Za-z0-9_.:-]/', '', trim( (string) $raw ) );
+		return 0 === strpos( (string) $a, 'rzh:' ) ? substr( (string) $a, 4 ) : (string) $a;
+	}
+
+	/** GET bizcity-vault/v1/policy?account= — the resolved matrix of the acting owner (or of one of their numbers). */
+	public static function rest_policy( WP_REST_Request $r ): WP_REST_Response {
+		$owner = self::policy_owner();
+		if ( is_wp_error( $owner ) ) {
+			return self::respond( $owner );
+		}
+		return self::respond( BizCity_Vault_Policy::snapshot( (int) $owner, self::policy_account( $r->get_param( 'account' ) ) ) );
+	}
+
+	/** PUT bizcity-vault/v1/policy {account?, matrix: {row: {col: mode|null}}} */
+	public static function rest_policy_save( WP_REST_Request $r ): WP_REST_Response {
+		$owner = self::policy_owner();
+		if ( is_wp_error( $owner ) ) {
+			return self::respond( $owner );
+		}
+		$b       = (array) $r->get_json_params();
+		$account = self::policy_account( $b['account'] ?? '' );
+		$res     = BizCity_Vault_Policy::save_matrix( (int) $owner, is_array( $b['matrix'] ?? null ) ? $b['matrix'] : array(), $account );
+		return self::respond( is_wp_error( $res ) ? $res : BizCity_Vault_Policy::snapshot( (int) $owner, $account ) );
+	}
+
+	/** PUT bizcity-vault/v1/policy/space {space, patch: {row: mode|null}} — one group / one customer. */
+	public static function rest_policy_space( WP_REST_Request $r ): WP_REST_Response {
+		$owner = self::policy_owner();
+		if ( is_wp_error( $owner ) ) {
+			return self::respond( $owner );
+		}
+		$b   = (array) $r->get_json_params();
+		$res = BizCity_Vault_Policy::save_space( (int) $owner, (string) ( $b['space'] ?? '' ), is_array( $b['patch'] ?? null ) ? $b['patch'] : array() );
+		return self::respond( is_wp_error( $res ) ? $res : array( 'contract' => BizCity_Vault_Policy::CONTRACT, 'space' => BizCity_Vault_Spaces::id( (string) $b['space'] ), 'overrides' => $res ) );
+	}
+
+	/**
+	 * MCP vault.space_policy — what the CELL reads before keeping anything: the matrix of the number of this turn (its owner's Kho) + the space
+	 * overrides. Read-only; the owner comes from the turn (run_as pushes the number's owner), never from an argument.
+	 */
+	public static function space_policy( array $args, array $ctx ) {
+		if ( ! class_exists( 'BizCity_Vault_Policy' ) ) {
+			return new WP_Error( 'vault_unavailable', 'Kho tri thức chưa sẵn sàng trên site này.', array( 'status' => 503 ) );
+		}
+		$account = self::policy_account( $ctx['account_id'] ?? ( $args['account'] ?? '' ) );
+		$owner   = class_exists( 'BizCity_Vault_Owner' ) ? ( '' !== $account ? BizCity_Vault_Owner::of_account( $account ) : 0 ) : 0;
+		$owner   = $owner > 0 ? $owner : ( class_exists( 'BizCity_Vault_Owner' ) ? BizCity_Vault_Owner::current() : self::owner( $ctx ) );
+		if ( $owner <= 0 ) {
+			return new WP_Error( 'policy_no_owner', 'Số này chưa có chủ trợ lý.', array( 'status' => 404 ) );
+		}
+		$snap = BizCity_Vault_Policy::snapshot( $owner, $account );
+		unset( $snap['rows'], $snap['cols'], $snap['defaults'] ); // the cell needs the decision, not the labels
+		$snap['quota'] = class_exists( 'BizCity_Vault_Spaces' ) ? BizCity_Vault_Spaces::QUOTA : array();
+		return $snap;
+	}
+
+	/** GET bizcity-vault/v1/spaces — [{space, type, label, hash, notes, usage}] of the acting Kho (PHASE-0.153 V2). */
+	public static function rest_spaces( WP_REST_Request $r ): WP_REST_Response {
+		if ( ! class_exists( 'BizCity_Vault_Spaces' ) || ! class_exists( 'BizCity_Vault_Owner' ) || ! BizCity_Vault_Owner::acts_as_owner() ) {
+			return self::respond( new WP_Error( 'space_denied', 'Chỉ chủ trợ lý xem được các ngăn nhóm / khách.', array( 'status' => 403, 'help_code' => 'twin_vault' ) ) );
+		}
+		$list = array();
+		foreach ( BizCity_Vault_Spaces::spaces() as $s ) {
+			$list[] = $s + array( 'usage' => BizCity_Vault_Spaces::usage( (string) $s['space'] ) );
+		}
+		return self::respond( array( 'contract' => BizCity_Vault_Spaces::CONTRACT, 'owner' => BizCity_Vault_Owner::current(), 'spaces' => $list ) );
+	}
+
+	/** GET bizcity-vault/v1/spaces/notes?space=group:… — the notes of one space + its usage (PHASE-0.153 V2). */
+	public static function rest_space_notes( WP_REST_Request $r ): WP_REST_Response {
+		if ( ! class_exists( 'BizCity_Vault_Spaces' ) || ! class_exists( 'BizCity_Vault_Owner' ) || ! BizCity_Vault_Owner::acts_as_owner() ) {
+			return self::respond( new WP_Error( 'space_denied', 'Chỉ chủ trợ lý xem được các ngăn nhóm / khách.', array( 'status' => 403, 'help_code' => 'twin_vault' ) ) );
+		}
+		$space = BizCity_Vault_Spaces::id( (string) $r->get_param( 'space' ) );
+		if ( '' === $space ) {
+			return self::respond( new WP_Error( 'space_invalid', 'Không gian không hợp lệ.', array( 'status' => 400, 'help_code' => 'twin_vault' ) ) );
+		}
+		return self::respond( array( 'contract' => BizCity_Vault_Spaces::CONTRACT, 'space' => $space, 'tag' => BizCity_Vault_Spaces::tag( $space ), 'notes' => BizCity_Vault_Spaces::notes( $space ), 'usage' => BizCity_Vault_Spaces::usage( $space ) ) );
 	}
 
 	private static function rest_ctx(): array {
@@ -1848,7 +2190,18 @@ final class BizCity_Twin_Vault {
 		}
 		$role = current_user_can( 'manage_options' ) ? 'owner' : 'staff'; // Brain_Access principal of the caller's own rows (unchanged)
 		$vrole = 'owner' === $role ? 'owner' : ( $is_staff ? 'staff' : 'public' ); // folder gate of the site-wide library
-		return array( 'owner_user_id' => get_current_user_id(), 'role' => $role, 'vrole' => $vrole );
+		// [2026-11-15 10:40 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V1b — a user with their own assistant reads THEIR Kho as its owner; an admin viewing
+		// another user's Kho reads that user's Journal rows too. Everyone else: unchanged (own rows, legacy library through the folder gate).
+		$rows_owner = $uid;
+		if ( class_exists( 'BizCity_Vault_Owner' ) ) {
+			if ( BizCity_Vault_Owner::acts_as_owner() ) {
+				$vrole = 'owner';
+			}
+			if ( current_user_can( 'manage_options' ) ) {
+				$rows_owner = BizCity_Vault_Owner::current();
+			}
+		}
+		return array( 'owner_user_id' => $rows_owner, 'role' => $role, 'vrole' => $vrole );
 	}
 
 	private static function respond( $res ): WP_REST_Response {
@@ -1963,6 +2316,19 @@ final class BizCity_Twin_Vault {
 			'read_only'      => true, 'idempotent' => true, 'required_scope' => 'brain.read', 'scopes' => array( 'brain.read' ),
 			'handler'        => array( __CLASS__, 'list_notes' ),
 			'llm_alias'      => 'vault_list',
+			'brain'          => array( 'tier' => 'L1', 'permission' => 'meta.read', 'crud' => 'read', 'answer_hint' => 'instant' ),
+		) );
+
+		// [2026-11-15 11:05 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.153 V3 — the cell reads the "lưu gì, vào đâu" matrix of this number before keeping anything
+		// @mcp bizcity-mcp-standard@1 tool vault.space_policy
+		$R::register( 'vault.space_policy', $common + array(
+			'title'          => 'Chính sách lưu của trợ lý',
+			'description'    => 'Ma trận "lưu gì, vào đâu" của chủ trợ lý sở hữu số Zalo của lượt này: với mỗi việc (files · remember · tasks · minutes · memory · guru_read) và mỗi loại cuộc trò chuyện (owner_1_1 · customer_1_1 · group_owner · group_no_owner) là auto / ask / off / na, cùng các ngăn nhóm / khách được chỉnh riêng (spaces) và trần dung lượng (quota). Cell đọc trước khi tự lưu; không dùng để trả lời người dùng.',
+			'input_schema'   => array( 'type' => 'object', 'properties' => new stdClass() ),
+			'output_schema'  => $R::envelope_schema( array( 'matrix' => array( 'type' => 'object' ), 'spaces' => array( 'type' => 'object' ) ), array( 'matrix' ) ),
+			'read_only'      => true, 'idempotent' => true, 'required_scope' => 'brain.read', 'scopes' => array( 'brain.read' ),
+			'handler'        => array( __CLASS__, 'space_policy' ),
+			'llm_alias'      => 'vault_space_policy',
 			'brain'          => array( 'tier' => 'L1', 'permission' => 'meta.read', 'crud' => 'read', 'answer_hint' => 'instant' ),
 		) );
 
