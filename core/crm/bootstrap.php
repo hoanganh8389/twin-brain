@@ -5,7 +5,7 @@
  * [2026-10-09 Johnny Chu - Chu Hoàng Anh] PHASE-0.96 S96-2.2 — the CRM spine moves out of plugins/bizcity-twin-crm into
  * the main plugin: the conversation ledger (contacts · inboxes · conversations · messages · attachments · labels),
  * team/inbox scope, the channel ingestor + outbound dispatcher, magic links for staff, the spine REST and the spine
- * DB installer. Loaded unconditionally right after core/channel-gateway (D96-2); the extension plugin Zalo Brain CRM
+ * DB installer. Loaded unconditionally right after core/channel-gateway (D96-2); the extension plugin Open CRM
  * boots on top at plugins_loaded@6 and registers what it adds through BizCity_CRM_Spine (doc 20 §4, doc 70 §2).
  *
  * Load order inside this file follows the old plugin bootstrap so nothing changes for the ledger.
@@ -220,7 +220,7 @@ final class BizCity_CRM_Spine_Boot {
 		add_filter( 'bizcity_zalo_connection_can_view', array( __CLASS__, 'zalo_connection_can_view' ) );
 
 		/**
-		 * The spine is loaded; extension plugins (Zalo Brain CRM) boot after this on plugins_loaded@6.
+		 * The spine is loaded; extension plugins (Open CRM) boot after this on plugins_loaded@6.
 		 */
 		do_action( 'bizcity_crm_spine_loaded' );
 	}

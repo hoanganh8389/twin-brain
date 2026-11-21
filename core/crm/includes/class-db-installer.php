@@ -5,7 +5,7 @@
  * [2026-10-09 Johnny Chu - Chu Hoàng Anh] PHASE-0.96 S96-2.2 — split from plugins/bizcity-twin-crm/includes/class-db-installer.php.
  * Core owns: inboxes, contacts, contact_inboxes, conversations, messages, attachments, labels, conversation_labels,
  * teams, team_members, inbox_members, archive_receipts, chat_magic_links (admin_chat_grants moved to bizcity-twin-crm and gmail_smtp_accounts retired, PHASE-0.126 G-C; the latter was for
- * the Email channel). The extension plugin (Zalo Brain CRM) appends its own CREATE statements through the
+ * the Email channel). The extension plugin (Open CRM) appends its own CREATE statements through the
  * `bizcity_crm_install_tables` filter and runs its migrations on `bizcity_crm_install_migrate`, so there is still
  * exactly one dbDelta pass. Every tbl_*() accessor stays here on purpose: callers compile whether or not the plugin
  * is present (D96-5). DB version option keeps its name so running sites do not reinstall.
