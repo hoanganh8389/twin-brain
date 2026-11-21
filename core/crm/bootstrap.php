@@ -80,6 +80,31 @@ if ( is_readable( $bizcity_crm_inc . 'class-crm-contact-space.php' ) ) {
 	require_once $bizcity_crm_inc . 'class-crm-contact-space.php';
 	BizCity_CRM_Contact_Space::init();
 }
+// [2026-11-21 01:59 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.156 W6 HOTFIX — uploading core/crm alone left NOTHING loading the group secretary ⇒ the config bundle
+// lost owner_agent.groups ⇒ the cell announced "dừng nhiệm vụ thư ký" in every followed group. The spine loads the Zalo groups itself now: the new folder
+// when it is on the server, else the old core/crm/includes files a partial upload leaves behind. The loader and the old files are class_exists-guarded.
+$bizcity_zalo_groups_loader = dirname( __DIR__ ) . '/channel-gateway/includes/zalo-groups/loader.php';
+if ( is_readable( $bizcity_zalo_groups_loader ) ) {
+	require_once $bizcity_zalo_groups_loader;
+} else {
+	foreach ( array(
+		'class-crm-zalo-directory.php'          => 'BizCity_CRM_Zalo_Directory',
+		'class-crm-group-secretary.php'         => 'BizCity_CRM_Group_Secretary',
+		'class-crm-group-index-pack.php'        => 'BizCity_CRM_Group_Index_Pack',
+		'rest/class-crm-group-notebook-rest.php' => 'BizCity_CRM_Group_Notebook_REST',
+	) as $bizcity_zg_file => $bizcity_zg_class ) {
+		if ( ! class_exists( $bizcity_zg_class, false ) && is_readable( $bizcity_crm_inc . $bizcity_zg_file ) ) {
+			require_once $bizcity_crm_inc . $bizcity_zg_file;
+			if ( 'BizCity_CRM_Group_Index_Pack' === $bizcity_zg_class ) {
+				BizCity_CRM_Group_Index_Pack::register();
+			} else {
+				call_user_func( array( $bizcity_zg_class, 'init' ) );
+			}
+		}
+	}
+	unset( $bizcity_zg_file, $bizcity_zg_class );
+}
+unset( $bizcity_zalo_groups_loader );
 // [2026-11-19 10:25 AM Johnny Chu - Chu Hoàng Anh] PHASE-0.156 S156-3.1 — crm-surfaces.php moved to bizcity-twin-crm (its only reader); core copy is crm-surfaces_deleted.php.
 foreach ( array( 'class-crm-actor.php', 'class-crm-authority.php', 'class-crm-zone-registry.php', 'class-crm-agent-mode-delegate.php' ) as $bizcity_crm_contract ) {
 	require_once $bizcity_crm_inc . 'contracts/' . $bizcity_crm_contract;

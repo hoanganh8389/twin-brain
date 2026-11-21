@@ -746,12 +746,7 @@ add_action( 'rest_api_init', array( 'BizCity_Zalo_Brain', 'register_rest' ) );
 // a locator and never optional. The extension plugin bizcity-twin-crm (Zalo Brain CRM, its own repository) boots on top at
 // plugins_loaded@6. The old bundled copy under plugins/bizcity-twin-crm is gone (D96-10).
 if ( ! $_bizcity_twinchat_admin_page && file_exists( __DIR__ . '/core/crm/bootstrap.php' ) ) {
-    require_once __DIR__ . '/core/crm/bootstrap.php';
-    // [2026-11-21 01:32 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.156 W6 (D) — Zalo groups of the cell (directory, group secretary, group_index pack,
-    // group-notebook REST) moved from core/crm to core/channel-gateway/includes/zalo-groups/; loaded here, right after the spine they write through.
-    if ( is_readable( __DIR__ . '/core/channel-gateway/includes/zalo-groups/loader.php' ) ) {
-        require_once __DIR__ . '/core/channel-gateway/includes/zalo-groups/loader.php';
-    }
+    require_once __DIR__ . '/core/crm/bootstrap.php'; // [2026-11-21 01:59 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.156 W6 HOTFIX — it also loads core/channel-gateway/includes/zalo-groups/
 }
 
 // [2026-07-27 Johnny Chu] PHASE-0.53-MCP Wave A — Twin Client Brain MCP gateway.

@@ -1,6 +1,6 @@
 <?php
 /**
- * Zalo groups of the cell (moved from core/crm). Runs right after core/crm/bootstrap.php; nothing without the spine.
+ * Zalo groups of the cell (moved from core/crm). Required by core/crm/bootstrap.php (after the installer); nothing without the spine.
  *
  * // [2026-11-21 01:32 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.156 W6 (D) — same load order and init calls as the old block in core/crm/bootstrap.php.
  */
