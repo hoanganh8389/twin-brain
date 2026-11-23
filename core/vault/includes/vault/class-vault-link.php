@@ -276,7 +276,52 @@ final class BizCity_Vault_Link {
 				$out[] = $view;
 			}
 		}
-		return self::crawl_queue( $out ); // PHASE-0.153 S153-C5
+		$out = self::crawl_queue( $out ); // PHASE-0.153 S153-C5
+		// [2026-11-23 11:29 AM Johnny Chu - Chu Hoàng Anh] HOTFIX-SITE-CRAWL-RUNNER — every job of the person says whether an assistant can take it
+		$runner = $out ? self::runner( $owner ) : null;
+		if ( $runner ) {
+			foreach ( $out as $k => $v ) {
+				$out[ $k ]['runner'] = $runner;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * [2026-11-23 11:29 AM Johnny Chu - Chu Hoàng Anh] HOTFIX-SITE-CRAWL-RUNNER (PHASE-0.153 S153-C8, chủ 23/11) — who takes the job: the cell works only for a
+	 * Kho whose owner has a ready Zalo assistant number (Agent Guru + "UID chủ tài khoản" + owner agent on). Otherwise the job waits forever; the Kho now says
+	 * why and what to do (R-ERROR-UX). null = unknown (the Zalo plugin is not loaded) ⇒ nothing new is said.
+	 */
+	public static function runner( int $owner ): ?array {
+		static $memo = array();
+		if ( isset( $memo[ $owner ] ) ) {
+			return $memo[ $owner ];
+		}
+		if ( ! class_exists( 'BizCity_Zalo_Hub_Config_Sync' ) || ! method_exists( 'BizCity_Zalo_Hub_Config_Sync', 'owner_ready' ) ) {
+			return null;
+		}
+		$r    = BizCity_Zalo_Hub_Config_Sync::owner_ready( $owner );
+		$u    = function_exists( 'get_userdata' ) ? get_userdata( $owner ) : null;
+		$who  = $u ? (string) $u->display_name : 'user #' . $owner;
+		$num  = '' !== $r['label'] ? 'Số Zalo ' . $r['label'] : 'Số Zalo của bạn';
+		$text = array(
+			'assistant_no_number'    => array( 'Tài khoản ' . $who . ' chưa có số Zalo trợ lý nên chưa ai nhận việc này.', 'Nhờ quản trị ghép một số Zalo cho tài khoản này (Kho tri thức › Trợ lý của tôi); có số là trợ lý tự nhận việc trong khoảng 5 phút.' ),
+			'assistant_no_guru'      => array( $num . ' chưa gắn Agent Guru nên trợ lý chưa nhận việc này.', 'Mở Channel Gateway › Bot Studio, chọn Agent Guru cho số này; trợ lý tự nhận việc trong khoảng 5 phút.' ),
+			'assistant_no_owner_uid' => array( $num . ' chưa khai "UID chủ tài khoản" nên trợ lý chưa nhận việc này.', 'Mở Channel Gateway › Bot Studio, điền UID chủ tài khoản cho số này; trợ lý tự nhận việc trong khoảng 5 phút.' ),
+			'assistant_off'          => array( 'Trợ lý chủ của số ' . ( '' !== $r['label'] ? $r['label'] : 'Zalo của bạn' ) . ' đang tắt nên chưa nhận việc này.', 'Bật lại trợ lý chủ của số này ở Channel Gateway › Bot Studio.' ),
+		);
+		$out = $r['ready']
+			? array( 'ready' => true, 'label' => (string) $r['label'] )
+			: array(
+				'ready'     => false,
+				'code'      => (string) $r['code'],
+				'message'   => $text[ $r['code'] ][0],
+				'hint'      => $text[ $r['code'] ][1],
+				'help_code' => 'vault_site_crawl',
+				'url'       => function_exists( 'admin_url' ) ? admin_url( 'admin.php?page=bizcity-my-assistant' . ( (int) get_current_user_id() !== $owner ? '&as_user=' . $owner : '' ) ) : '',
+			);
+		$memo[ $owner ] = $out;
+		return $out;
 	}
 
 	private static function crawl_owner(): int {
@@ -368,6 +413,10 @@ final class BizCity_Vault_Link {
 			}
 		}
 		$view = $view ?: self::crawl_view( $set );
+		$runner = self::runner( $owner ); // [2026-11-23 11:29 AM Johnny Chu - Chu Hoàng Anh] HOTFIX-SITE-CRAWL-RUNNER
+		if ( $view && $runner && ! isset( $view['runner'] ) ) {
+			$view['runner'] = $runner;
+		}
 		return new WP_REST_Response( array( 'contract' => self::CRAWL_CONTRACT, 'job' => $view ?: array( 'entry_id' => $entry_id, 'ref' => (string) ( $set['ref_code'] ?? '' ) ), 'queued_after' => $queued_after ), 200 );
 	}
 
@@ -392,6 +441,10 @@ final class BizCity_Vault_Link {
 		$view  = is_array( $row ) ? self::crawl_view( $row ) : array();
 		if ( ! $view ) {
 			return self::crawl_fail( 'site_not_found', 'Không có việc học website này trong Kho của bạn.', 404, 'Tải lại Kho rồi mở lại tiến trình.' );
+		}
+		$runner = self::runner( $owner ); // [2026-11-23 11:29 AM Johnny Chu - Chu Hoàng Anh] HOTFIX-SITE-CRAWL-RUNNER
+		if ( $runner ) {
+			$view['runner'] = $runner;
 		}
 		return new WP_REST_Response( array( 'contract' => self::CRAWL_CONTRACT, 'job' => $view, 'poll_s' => $view['running'] || $view['want_pending'] ? self::CRAWL_POLL_S : 0 ), 200 );
 	}
@@ -651,7 +704,9 @@ final class BizCity_Vault_Link {
 			$lines[] = array( 'url' => $url, 'id' => (string) $res['id'], 'ref' => strtoupper( (string) strtok( (string) $res['source_ref'], '@' ) ), 'entry_id' => (int) ( $res['entry_id'] ?? 0 ), 'duplicate' => false, 'status' => 'pending', 'folder' => (string) ( $res['vault_folder'] ?? '' ) );
 		}
 		set_transient( $tkey, $used, DAY_IN_SECONDS );
-		return new WP_REST_Response( array( 'contract' => self::CONTRACT, 'depth' => $depth, 'lines' => $lines ), 200 );
+		// [2026-11-23 11:29 AM Johnny Chu - Chu Hoàng Anh] HOTFIX-SITE-CRAWL-RUNNER — single links wait for the same assistant
+		$runner = self::runner( (int) ( $ctx['owner_user_id'] ?? $uid ) );
+		return new WP_REST_Response( array( 'contract' => self::CONTRACT, 'depth' => $depth, 'lines' => $lines ) + ( $runner ? array( 'runner' => $runner ) : array() ), 200 );
 	}
 
 	/** meta.status pending on the row (the cell's 5-minute beat looks for exactly that); a refusal is logged, the note stays. */

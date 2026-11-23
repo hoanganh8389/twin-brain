@@ -352,6 +352,8 @@ $_bzc_bot_files = array(
 	$gateway_dir . 'bot/class-bot-config-repo.php'    => 'channel.bot.config_repo',
 	// [2026-09-30 Claude Opus 5.5] PHASE-0.87 CL-13 — agent-mode-access@1 (modes the Owner Agent may use for a user); before the REST that reads it.
 	$gateway_dir . 'class-agent-mode-access.php'      => 'channel.agent_mode_access',
+	// [2026-11-23 05:43 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.83 S83-G1 — SetupGate: one dialog (R-SETUP-4) when an action needs the cell and the four steps are not done; hosts only enqueue it.
+	$gateway_dir . 'class-setup-gate.php'             => 'channel.setup_gate',
 	// [2026-10-16 04:20 PM Johnny Chu - Chu Hoàng Anh] PHASE-0.116 S116-I7 — connector-framework@1: one hook (bizcity_connectors_register), one manifest per connector.
 	$gateway_dir . 'class-connector-registry.php'       => 'channel.connector_registry',
 	$gateway_dir . 'class-connector-rest.php'           => 'channel.connector_rest',
