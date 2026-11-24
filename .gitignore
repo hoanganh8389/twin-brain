@@ -193,3 +193,6 @@ vendor/
 
 # [2026-11-14 12:28 AM Johnny Chu - Chu Hoàng Anh] owner: VPS deployment notes of the Zalo bridge stay on the dev machine (private, like *.local.instructions.md) — never pushed.
 /plugins/bizcity-zalo-personal/.github/instructions/vps-deployment.instructions.md
+
+# [2026-11-24 06:05 PM Johnny Chu - Chu Hoàng Anh] SPINE-2 — Q-SPINE-4 (chủ duyệt 2026-11-24): manifest xương sống ở gốc mọi repo, kể cả plugin WordPress; tài liệu canon đi vào docs/developer/ (một cửa, Q103-8).
+!/bizcity.app.json
