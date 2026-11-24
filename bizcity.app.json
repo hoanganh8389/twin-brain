@@ -1,0 +1,20 @@
+{
+  "schema": "bizcity_app@1",
+  "id": "twin-brain",
+  "name": "Open Brain (Twin Brain / Zalo Brain)",
+  "repo": "hoanganh8389/twin-brain",
+  "public": true,
+  "runtime": "wordpress-php",
+  "license": "GPL-2.0-or-later",
+  "paid": false,
+  "axes": {
+    "owns": [],
+    "uses": ["tenant", "user", "contact", "item", "partner", "document"]
+  },
+  "sync": {
+    "push_via": "mcp"
+  },
+  "contracts": ["bizcity_spine@1", "bizcity_mcp@1"],
+  "docs": { "canon": "docs/developer/CANON-SPINE.md" },
+  "notes": "Não điều phối, không là chủ dữ liệu (R-CANON-2): giữ phiên kênh, mô hình AI, kịch bản, skill. Ghi vào app khác chỉ qua MCP, chỉ tạo nháp / chờ duyệt với confirm_token; actor {kind: ai, via: mcp} vào audit. Người dùng WordPress của bizcity là nguồn danh tính (sub = wp:<id>). Phần kết nối Zalo và AI đi qua khoá 1API của Zalo Hub — khoản có phí duy nhất ngoài dịch vụ."
+}
